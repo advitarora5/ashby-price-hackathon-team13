@@ -1,0 +1,310 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]: ◐ SecondLook
+    - navigation [ref=e6]:
+      - button "Review" [ref=e7] [cursor=pointer]
+      - button "Evaluation" [ref=e8] [cursor=pointer]
+    - generic "Record your own read before any AI evidence is shown, on every case" [ref=e9]:
+      - checkbox "Blind-first for all cases" [ref=e10]
+      - text: Blind-first for all cases
+    - generic [ref=e11]: "Experimental decision support · never a diagnosis · data: unknown"
+  - main [ref=e12]:
+    - complementary [ref=e13]:
+      - generic [ref=e14]:
+        - heading "Case queue" [level=2] [ref=e15]
+        - generic [ref=e16]: sorted by model disagreement
+      - list [ref=e17]:
+        - listitem [ref=e18]:
+          - button "test_065 slow path lymph node unread disagreement 68 artifacts on 5% of tiles" [ref=e19] [cursor=pointer]:
+            - generic [ref=e20]:
+              - generic [ref=e21]: test_065
+              - generic [ref=e22]: slow path
+            - generic [ref=e23]:
+              - generic [ref=e24]: lymph node
+              - generic [ref=e25]: unread
+            - generic "disagreement_v1(plip,quiltnet)" [ref=e26]: disagreement 68
+            - generic [ref=e30]: artifacts on 5% of tiles
+        - listitem [ref=e31]:
+          - button "test_084 fast path lymph node unread disagreement 66 artifacts on 15% of tiles" [ref=e32] [cursor=pointer]:
+            - generic [ref=e33]:
+              - generic [ref=e34]: test_084
+              - generic [ref=e35]: fast path
+            - generic [ref=e36]:
+              - generic [ref=e37]: lymph node
+              - generic [ref=e38]: unread
+            - generic "disagreement_v1(plip,quiltnet)" [ref=e39]: disagreement 66
+            - generic [ref=e43]: artifacts on 15% of tiles
+        - listitem [ref=e44]:
+          - button "test_095 fast path lymph node unread disagreement 62 artifacts on 5% of tiles" [ref=e45] [cursor=pointer]:
+            - generic [ref=e46]:
+              - generic [ref=e47]: test_095
+              - generic [ref=e48]: fast path
+            - generic [ref=e49]:
+              - generic [ref=e50]: lymph node
+              - generic [ref=e51]: unread
+            - generic "disagreement_v1(plip,quiltnet)" [ref=e52]: disagreement 62
+            - generic [ref=e56]: artifacts on 5% of tiles
+        - listitem [ref=e57]:
+          - button "test_122 fast path lymph node in review disagreement 54" [ref=e73] [cursor=pointer]:
+            - generic [ref=e59]:
+              - generic [ref=e60]: test_122
+              - generic [ref=e61]: fast path
+            - generic [ref=e62]:
+              - generic [ref=e63]: lymph node
+              - generic [ref=e64]: in review
+            - generic "disagreement_v1(plip,quiltnet)" [ref=e65]: disagreement 54
+      - paragraph [ref=e69]: "Tier cut-off: top 15% by rank (no validation-derived cut-off yet)."
+    - generic [ref=e70]:
+      - generic [ref=e74]:
+        - generic [ref=e75]: test_122
+        - generic [ref=e76]: fast path
+        - generic [ref=e77]: evidence-first
+        - generic [ref=e78]:
+          - checkbox "risk" [checked] [ref=e79]
+          - text: risk
+        - generic [ref=e80]:
+          - checkbox "disagreement" [ref=e81]
+          - text: disagreement
+        - generic [ref=e82]:
+          - checkbox "regions" [checked] [ref=e83]
+          - text: regions
+        - generic [ref=e84]:
+          - checkbox "artifact" [ref=e85]
+          - text: artifact
+        - generic [ref=e86]:
+          - checkbox "seen / unseen" [ref=e87]
+          - text: seen / unseen
+      - generic [ref=e91]:
+        - generic:
+          - generic "risk 54%" [ref=e93] [cursor=pointer]
+          - generic [ref=e96] [cursor=pointer]
+      - generic [ref=e100]:
+        - generic [ref=e101]: "Assessment: benign"
+        - button "Sign out as benign" [ref=e308] [cursor=pointer]
+    - complementary [ref=e72]:
+      - generic [ref=e105]:
+        - generic [ref=e106]:
+          - heading "Evidence" [level=3] [ref=e107]
+          - generic [ref=e108]: what the AI sees, and where
+        - generic [ref=e109]:
+          - generic [ref=e110]: Tile r18c79 · click the slide to inspect another tile
+          - button "go to tile" [ref=e111] [cursor=pointer]
+        - generic [ref=e112]:
+          - generic [ref=e113]: Tumour risk (smoothed, tile)
+          - generic [ref=e114]: 54%
+        - generic [ref=e115]: tumor_probe:quiltnet:probe_v1
+        - generic [ref=e116]:
+          - generic [ref=e117]: Model disagreement (percentile)
+          - generic [ref=e118]: 66%
+        - generic [ref=e119]:
+          - generic [ref=e120]:
+            - generic [ref=e121]: Metastatic carcinoma
+            - generic [ref=e123]:
+              - generic [ref=e126]: 3%
+              - button "where ↗" [ref=e127] [cursor=pointer]
+          - generic [ref=e128]:
+            - generic [ref=e129]:
+              - generic [ref=e130]: Tumor epithelium
+              - generic [ref=e131]: calibrator not fit yet (text prior only)
+            - generic [ref=e132]:
+              - 'generic "text prior: not a probability" [ref=e133]'
+              - generic [ref=e135]: text
+              - button "where ↗" [ref=e136] [cursor=pointer]
+          - generic [ref=e137]:
+            - generic [ref=e138]:
+              - generic [ref=e139]: Dense lymphocytes
+              - generic [ref=e140]: calibrator not fit yet (text prior only)
+            - generic [ref=e141]:
+              - 'generic "text prior: not a probability" [ref=e142]'
+              - generic [ref=e144]: text
+              - button "where ↗" [ref=e145] [cursor=pointer]
+          - generic [ref=e146]:
+            - generic [ref=e147]:
+              - generic [ref=e148]: Necrosis / debris
+              - generic [ref=e149]: calibrator not fit yet (text prior only)
+            - generic [ref=e150]:
+              - 'generic "text prior: not a probability" [ref=e151]'
+              - generic [ref=e153]: text
+              - button "where ↗" [ref=e154] [cursor=pointer]
+          - generic [ref=e155]:
+            - generic [ref=e156]:
+              - generic [ref=e157]: Stroma
+              - generic [ref=e158]: calibrator not fit yet (text prior only)
+            - generic [ref=e159]:
+              - 'generic "text prior: not a probability" [ref=e160]'
+              - generic [ref=e162]: text
+              - button "where ↗" [ref=e163] [cursor=pointer]
+          - generic [ref=e164]:
+            - generic [ref=e165]:
+              - generic [ref=e166]: Mucus
+              - generic [ref=e167]: calibrator not fit yet (text prior only)
+            - generic [ref=e168]:
+              - 'generic "text prior: not a probability" [ref=e169]'
+              - generic [ref=e171]: text
+              - button "where ↗" [ref=e172] [cursor=pointer]
+          - generic [ref=e173]:
+            - generic [ref=e174]:
+              - generic [ref=e175]: Smooth muscle
+              - generic [ref=e176]: calibrator not fit yet (text prior only)
+            - generic [ref=e177]:
+              - 'generic "text prior: not a probability" [ref=e178]'
+              - generic [ref=e180]: text
+              - button "where ↗" [ref=e181] [cursor=pointer]
+          - generic [ref=e182]:
+            - generic [ref=e183]:
+              - generic [ref=e184]: Fat
+              - generic [ref=e185]: calibrator not fit yet (text prior only)
+            - generic [ref=e186]:
+              - 'generic "text prior: not a probability" [ref=e187]'
+              - generic [ref=e189]: text
+              - button "where ↗" [ref=e190] [cursor=pointer]
+          - generic [ref=e191]:
+            - generic [ref=e192]:
+              - generic [ref=e193]: Normal glands / mucosa
+              - generic [ref=e194]: calibrator not fit yet (text prior only)
+            - generic [ref=e195]:
+              - 'generic "text prior: not a probability" [ref=e196]'
+              - generic [ref=e198]: text
+              - button "where ↗" [ref=e199] [cursor=pointer]
+          - generic [ref=e200]:
+            - generic [ref=e201]:
+              - generic [ref=e202]: Irregular, enlarged nuclei
+              - generic [ref=e203]: text only, unvalidated
+            - generic [ref=e204]:
+              - 'generic "text prior: not a probability" [ref=e205]'
+              - generic [ref=e207]: text
+              - button "where ↗" [ref=e208] [cursor=pointer]
+          - generic [ref=e209]:
+            - generic [ref=e210]:
+              - generic [ref=e211]: Mitotic figures
+              - generic [ref=e212]: text only, unvalidated
+            - generic [ref=e213]:
+              - 'generic "text prior: not a probability" [ref=e214]'
+              - generic [ref=e216]: text
+              - button "where ↗" [ref=e217] [cursor=pointer]
+        - paragraph [ref=e218]: Solid bars are calibrated on labelled tiles (0–100% = how often tiles with this score carry the label). Hatched bars are text-prompt similarity only and are not validated.
+        - generic [ref=e219]:
+          - generic [ref=e220]: Similar labelled tiles (other slides)
+          - generic [ref=e221]:
+            - generic [ref=e222]:
+              - generic [ref=e223]: labelled tumour
+              - generic [ref=e224]:
+                - figure "tumor_091 · 0.95" [ref=e225]:
+                  - img "tumor example from tumor_091" [ref=e226]
+                - figure "tumor_091 · 0.95" [ref=e228]:
+                  - img "tumor example from tumor_091" [ref=e229]
+            - generic [ref=e231]:
+              - generic [ref=e232]: labelled benign
+              - generic [ref=e233]:
+                - figure "tumor_091 · 0.94" [ref=e234]:
+                  - img "benign example from tumor_091" [ref=e235]
+                - figure "tumor_075 · 0.94" [ref=e237]:
+                  - img "benign example from tumor_075" [ref=e238]
+        - generic [ref=e240]:
+          - generic [ref=e241]: Highest-risk regions
+          - button "#1 risk 54% 1 tiles" [ref=e242] [cursor=pointer]:
+            - generic [ref=e243]: "#1"
+            - generic [ref=e244]: risk 54%
+            - generic [ref=e245]: 1 tiles
+      - generic [ref=e246]:
+        - generic [ref=e247]:
+          - heading "Unseen tissue" [level=3] [ref=e248]
+          - generic [ref=e249]: what you have not looked at
+        - generic [ref=e252]:
+          - generic [ref=e253]: 0%
+          - text: of tissue viewed at ≥10×
+        - paragraph [ref=e254]: "Viewport tracking: tile centre on screen at >= min magnification (does not prove it was looked at). 27 events."
+      - generic [ref=e255]:
+        - generic [ref=e256]:
+          - heading "Review policy" [level=3] [ref=e257]
+          - generic [ref=e258]: is a second human read worth it?
+        - strong [ref=e310]: A second human read is suggested
+        - list [ref=e311]:
+          - listitem [ref=e312]:
+            - generic [ref=e313]: ✕
+            - text: Reader and AI agree
+          - listitem [ref=e314]:
+            - generic [ref=e315]: ✓
+            - text: AI models agree
+          - listitem [ref=e316]:
+            - generic [ref=e317]: –
+            - text: No risky unviewed tissue
+        - paragraph [ref=e318]: reader and AI disagree; coverage check not available.
+        - paragraph [ref=e319]: max smoothed tumour risk >= 0.50 (default_unvalidated)
+        - generic [ref=e320]:
+          - generic [ref=e321]: "Record the second human reader's call:"
+          - generic [ref=e322]:
+            - button "benign" [ref=e323] [cursor=pointer]
+            - button "suspicious" [ref=e324] [cursor=pointer]
+            - button "malignant" [ref=e325] [cursor=pointer]
+          - paragraph [ref=e326]: The AI never breaks a tie between human readers.
+        - paragraph [ref=e327]: Experimental decision support. Not a diagnosis; the pathologist signs the report.
+        - generic [ref=e260]:
+          - generic [ref=e261]: What each policy costs (CrowdGleason prostate test set, expert reference)
+          - table [ref=e262]:
+            - rowgroup [ref=e263]:
+              - row [ref=e264]:
+                - columnheader "Policy" [ref=e265]
+                - columnheader "Human reads / 100" [ref=e266]
+                - columnheader "Agreement (95% CI)" [ref=e267]
+            - rowgroup [ref=e268]:
+              - row [ref=e269]:
+                - cell "1 resident" [ref=e270]
+                - cell "100" [ref=e271]
+                - cell "74.3% (73.0–75.6)" [ref=e272]:
+                  - text: 74.3%
+                  - generic [ref=e273]: (73.0–75.6)
+              - row [ref=e274]:
+                - cell "2 residents (+3rd on disagreement)" [ref=e275]
+                - cell "241" [ref=e276]
+                - cell "85.3% (84.2–86.3)" [ref=e277]:
+                  - text: 85.3%
+                  - generic [ref=e278]: (84.2–86.3)
+              - row [ref=e279]:
+                - cell "majority of 3" [ref=e280]
+                - cell "300" [ref=e281]
+                - cell "85.3% (84.2–86.3)" [ref=e282]:
+                  - text: 85.3%
+                  - generic [ref=e283]: (84.2–86.3)
+              - row [ref=e284]:
+                - cell "majority of 5" [ref=e285]
+                - cell "500" [ref=e286]
+                - cell "92.5% (91.5–93.4)" [ref=e287]:
+                  - text: 92.5%
+                  - generic [ref=e288]: (91.5–93.4)
+              - row [ref=e289]:
+                - cell "majority of 7" [ref=e290]
+                - cell "700" [ref=e291]
+                - cell "98.5% (97.8–99.0)" [ref=e292]:
+                  - text: 98.5%
+                  - generic [ref=e293]: (97.8–99.0)
+          - paragraph [ref=e294]: 2812 patches, 232 slides, bootstrap by slide. AI-supported rows appear once prostate-probe predictions are exported; they are never simulated.
+      - generic [ref=e295]:
+        - generic [ref=e296]:
+          - heading "Replay a recorded read" [level=3] [ref=e297]
+          - generic [ref=e298]: PathoGaze eye-tracking, through the live coverage engine
+        - generic [ref=e299]:
+          - combobox [ref=e300]:
+            - option "P10 · resident yrs · called Benign · 42s" [selected]
+            - option "P11 · 5 - 10 yrs · called Malignant · 52s"
+            - option "P1 · < 5 yrs · called Benign · 29s"
+            - option "P2 · resident yrs · called Benign · 70s"
+            - option "P3 · 5 - 10 yrs · called Malignant · 78s"
+            - option "P4 · < 5 yrs · called Malignant · 167s"
+            - option "P5 · resident yrs · called Malignant · 135s"
+            - option "P7 · > 10 yrs · called Benign · 68s"
+            - option "P8 · > 10 yrs · called Benign · 11s"
+            - option "P9 · < 5 yrs · called Benign · 68s"
+          - combobox [ref=e301]:
+            - option "gaze (fixations)" [selected]
+            - option "viewport only"
+        - generic [ref=e302]:
+          - button "Pick a random benign call" [ref=e303] [cursor=pointer]
+          - button "▶ Replay" [ref=e304] [cursor=pointer]
+          - generic [ref=e305]:
+            - text: speed
+            - combobox "speed" [ref=e306]:
+              - option "slow"
+              - option "normal" [selected]
+              - option "fast"
+        - paragraph [ref=e307]: The reader called this slide Benign. The sign-out check runs on that call when the replay ends.

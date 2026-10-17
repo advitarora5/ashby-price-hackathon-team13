@@ -1,0 +1,63 @@
+# Feature bars shown to the pathologist. Wording to be checked by the on-site expert.
+#
+# calibrate_on: where the isotonic calibrator is fit.
+#   nct:<CLASS>      NCT-CRC-HE-100K tile class (colon; cross-organ when shown on lymph node)
+#   camelyon:tumor   CAMELYON16 training tiles labelled from expert masks
+#   none             no labelled counterpart -> shown with a "text only, unvalidated" badge
+version: features_v1
+features:
+  - id: metastasis
+    label: Metastatic carcinoma
+    positive: ["metastatic carcinoma in a lymph node", "breast cancer metastasis with tumor cell nests", "malignant epithelial cells infiltrating lymph node"]
+    negative: ["normal lymph node tissue with lymphocytes", "benign lymph node"]
+    calibrate_on: camelyon:tumor
+  - id: tumor_epithelium
+    label: Tumor epithelium
+    positive: ["adenocarcinoma epithelium", "malignant epithelial tumor cells", "carcinoma"]
+    negative: ["benign tissue without tumor cells"]
+    calibrate_on: nct:TUM
+  - id: lymphocytes
+    label: Dense lymphocytes
+    positive: ["dense lymphocytes", "sheets of small round lymphocytes", "lymphoid tissue"]
+    negative: ["tissue without lymphocytes"]
+    calibrate_on: nct:LYM
+  - id: necrosis_debris
+    label: Necrosis / debris
+    positive: ["necrosis", "necrotic debris", "cellular debris and necrotic tissue"]
+    negative: ["viable tissue without necrosis"]
+    calibrate_on: nct:DEB
+  - id: stroma
+    label: Stroma
+    positive: ["fibrous stroma", "desmoplastic stroma", "collagenous connective tissue"]
+    negative: ["tissue without stroma"]
+    calibrate_on: nct:STR
+  - id: mucus
+    label: Mucus
+    positive: ["mucus", "extracellular mucin", "pools of mucin"]
+    negative: ["tissue without mucin"]
+    calibrate_on: nct:MUC
+  - id: muscle
+    label: Smooth muscle
+    positive: ["smooth muscle", "smooth muscle bundles"]
+    negative: ["tissue without muscle"]
+    calibrate_on: nct:MUS
+  - id: fat
+    label: Fat
+    positive: ["adipose tissue", "fat cells", "adipocytes"]
+    negative: ["tissue without fat"]
+    calibrate_on: nct:ADI
+  - id: normal_glands
+    label: Normal glands / mucosa
+    positive: ["normal colon mucosa", "benign glands", "normal glandular epithelium"]
+    negative: ["tissue without normal glands"]
+    calibrate_on: nct:NORM
+  - id: irregular_nuclei
+    label: Irregular, enlarged nuclei
+    positive: ["large irregular pleomorphic nuclei", "nuclear atypia", "enlarged hyperchromatic nuclei"]
+    negative: ["small regular round nuclei"]
+    calibrate_on: none
+  - id: mitoses
+    label: Mitotic figures
+    positive: ["mitotic figures", "many mitoses"]
+    negative: ["no mitotic figures"]
+    calibrate_on: none

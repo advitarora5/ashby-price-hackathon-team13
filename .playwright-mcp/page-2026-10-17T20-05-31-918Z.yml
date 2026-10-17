@@ -1,0 +1,171 @@
+- generic [ref=f2e3]:
+  - banner [ref=f2e4]:
+    - generic [ref=f2e5]: ◐ SecondLook
+    - navigation [ref=f2e6]:
+      - button "Review" [ref=f2e7] [cursor=pointer]
+      - button "Evaluation" [ref=f2e8] [cursor=pointer]
+    - generic "Record your own read before any AI evidence is shown, on every case" [ref=f2e9]:
+      - checkbox "Blind-first for all cases" [ref=f2e10]
+      - text: Blind-first for all cases
+    - generic [ref=f2e11]: "Experimental decision support · never a diagnosis · data: real CAMELYON16 slides; tumour probe trained on 12 slides"
+  - main [ref=f2e12]:
+    - complementary [ref=f2e13]:
+      - generic [ref=f2e14]:
+        - heading "Case queue" [level=2] [ref=f2e15]
+        - generic [ref=f2e16]: sorted by model uncertainty
+      - list [ref=f2e17]:
+        - listitem [ref=f2e18]:
+          - button "test_065 slow path lymph node in review disagreement 68 · uncertainty 26 artifacts on 5% of tiles" [active] [ref=f2e74] [cursor=pointer]:
+            - generic [ref=f2e20]:
+              - generic [ref=f2e21]: test_065
+              - generic [ref=f2e22]: slow path
+            - generic [ref=f2e23]:
+              - generic [ref=f2e24]: lymph node
+              - generic [ref=f2e25]: in review
+            - generic "disagreement_v1(plip,quiltnet)" [ref=f2e26]: disagreement 68 · uncertainty 26
+            - generic [ref=f2e30]: artifacts on 5% of tiles
+        - listitem [ref=f2e31]:
+          - button "test_122 fast path lymph node signed out disagreement 54 · uncertainty 7" [ref=f2e32] [cursor=pointer]:
+            - generic [ref=f2e33]:
+              - generic [ref=f2e34]: test_122
+              - generic [ref=f2e35]: fast path
+            - generic [ref=f2e36]:
+              - generic [ref=f2e37]: lymph node
+              - generic [ref=f2e38]: signed out
+            - generic "disagreement_v1(plip,quiltnet)" [ref=f2e39]: disagreement 54 · uncertainty 7
+        - listitem [ref=f2e43]:
+          - button "test_084 fast path lymph node unread disagreement 66 · uncertainty 6 artifacts on 15% of tiles" [ref=f2e44] [cursor=pointer]:
+            - generic [ref=f2e45]:
+              - generic [ref=f2e46]: test_084
+              - generic [ref=f2e47]: fast path
+            - generic [ref=f2e48]:
+              - generic [ref=f2e49]: lymph node
+              - generic [ref=f2e50]: unread
+            - generic "disagreement_v1(plip,quiltnet)" [ref=f2e51]: disagreement 66 · uncertainty 6
+            - generic [ref=f2e55]: artifacts on 15% of tiles
+        - listitem [ref=f2e56]:
+          - button "test_095 fast path lymph node unread disagreement 62 · uncertainty 4 artifacts on 5% of tiles" [ref=f2e57] [cursor=pointer]:
+            - generic [ref=f2e58]:
+              - generic [ref=f2e59]: test_095
+              - generic [ref=f2e60]: fast path
+            - generic [ref=f2e61]:
+              - generic [ref=f2e62]: lymph node
+              - generic [ref=f2e63]: unread
+            - generic "disagreement_v1(plip,quiltnet)" [ref=f2e64]: disagreement 62 · uncertainty 4
+            - generic [ref=f2e68]: artifacts on 5% of tiles
+      - paragraph [ref=f2e69]: Model disagreement did not beat single-model uncertainty in evaluation, so tiers use uncertainty (disagreement still shown).
+      - paragraph [ref=f2e70]: "Tier cut-off: top 15% by rank (no validation-derived cut-off yet)."
+    - generic [ref=f2e71]:
+      - generic [ref=f2e75]:
+        - generic [ref=f2e76]: test_065
+        - generic [ref=f2e77]: slow path
+        - generic [ref=f2e78]: blind-first
+        - generic [ref=f2e79]:
+          - checkbox "risk" [checked] [ref=f2e80]
+          - text: risk
+        - generic [ref=f2e81]:
+          - checkbox "disagreement" [ref=f2e82]
+          - text: disagreement
+        - generic [ref=f2e83]:
+          - checkbox "regions" [checked] [ref=f2e84]
+          - text: regions
+        - generic [ref=f2e85]:
+          - checkbox "artifact" [ref=f2e86]
+          - text: artifact
+        - generic [ref=f2e87]:
+          - checkbox "seen / unseen" [ref=f2e88]
+          - text: seen / unseen
+      - generic [ref=f2e96]:
+        - generic [ref=f2e97]: "Record your own assessment first (AI evidence hidden):"
+        - button "benign" [ref=f2e98] [cursor=pointer]
+        - button "suspicious" [ref=f2e99] [cursor=pointer]
+        - button "malignant" [ref=f2e100] [cursor=pointer]
+    - complementary [ref=f2e73]:
+      - generic [ref=f2e101]:
+        - generic [ref=f2e102]:
+          - heading "Evidence" [level=3] [ref=f2e103]
+          - generic [ref=f2e104]: what the AI sees, and where
+        - generic [ref=f2e105]:
+          - generic [aria-hidden] [ref=f2e106]: 🔒
+          - generic [ref=f2e107]:
+            - strong [ref=f2e108]: AI evidence hidden
+            - paragraph [ref=f2e109]: "blind review: record your initial assessment to reveal AI evidence"
+      - generic [ref=f2e110]:
+        - generic [ref=f2e111]:
+          - heading "Unseen tissue" [level=3] [ref=f2e112]
+          - generic [ref=f2e113]: what you have not looked at
+        - paragraph [ref=f2e114]: Pan and zoom the slide; viewed tissue is tracked automatically.
+      - generic [ref=f2e115]:
+        - generic [ref=f2e116]:
+          - heading "Review policy" [level=3] [ref=f2e117]
+          - generic [ref=f2e118]: is a second human read worth it?
+        - paragraph [ref=f2e119]: "Slow path: models disagree on this case. A recommendation appears after you record an assessment."
+        - generic [ref=f2e120]:
+          - generic [ref=f2e121]: What each policy costs (CrowdGleason prostate test set, expert reference)
+          - table [ref=f2e122]:
+            - rowgroup [ref=f2e123]:
+              - row [ref=f2e124]:
+                - columnheader "Policy" [ref=f2e125]
+                - columnheader "Human reads / 100" [ref=f2e126]
+                - columnheader "Agreement (95% CI)" [ref=f2e127]
+            - rowgroup [ref=f2e128]:
+              - row [ref=f2e129]:
+                - cell "1 resident" [ref=f2e130]
+                - cell "100" [ref=f2e131]
+                - cell "74.3% (73.0–75.6)" [ref=f2e132]:
+                  - text: 74.3%
+                  - generic [ref=f2e133]: (73.0–75.6)
+              - row [ref=f2e134]:
+                - cell "2 residents (+3rd on disagreement)" [ref=f2e135]
+                - cell "241" [ref=f2e136]
+                - cell "85.3% (84.2–86.3)" [ref=f2e137]:
+                  - text: 85.3%
+                  - generic [ref=f2e138]: (84.2–86.3)
+              - row [ref=f2e139]:
+                - cell "majority of 3" [ref=f2e140]
+                - cell "300" [ref=f2e141]
+                - cell "85.3% (84.2–86.3)" [ref=f2e142]:
+                  - text: 85.3%
+                  - generic [ref=f2e143]: (84.2–86.3)
+              - row [ref=f2e144]:
+                - cell "majority of 5" [ref=f2e145]
+                - cell "500" [ref=f2e146]
+                - cell "92.5% (91.5–93.4)" [ref=f2e147]:
+                  - text: 92.5%
+                  - generic [ref=f2e148]: (91.5–93.4)
+              - row [ref=f2e149]:
+                - cell "majority of 7" [ref=f2e150]
+                - cell "700" [ref=f2e151]
+                - cell "98.5% (97.8–99.0)" [ref=f2e152]:
+                  - text: 98.5%
+                  - generic [ref=f2e153]: (97.8–99.0)
+          - paragraph [ref=f2e154]: 2812 patches, 232 slides, bootstrap by slide. AI-supported rows appear once prostate-probe predictions are exported; they are never simulated.
+      - generic [ref=f2e155]:
+        - generic [ref=f2e156]:
+          - heading "Replay a recorded read" [level=3] [ref=f2e157]
+          - generic [ref=f2e158]: PathoGaze eye-tracking, through the live coverage engine
+        - generic [ref=f2e159]:
+          - combobox [ref=f2e160]:
+            - option "P10 · resident yrs · called Benign · 61s" [selected]
+            - option "P11 · 5 - 10 yrs · called Malignant · 63s"
+            - option "P1 · < 5 yrs · called Malignant · 67s"
+            - option "P2 · resident yrs · called Benign · 54s"
+            - option "P3 · 5 - 10 yrs · called Benign · 41s"
+            - option "P4 · < 5 yrs · called Malignant · 106s"
+            - option "P5 · resident yrs · called Benign · 41s"
+            - option "P7 · > 10 yrs · called Benign · 37s"
+            - option "P8 · > 10 yrs · called Benign · 19s"
+            - option "P9 · < 5 yrs · called Benign · 45s"
+          - combobox [ref=f2e161]:
+            - option "gaze (fixations)" [selected]
+            - option "viewport only"
+        - generic [ref=f2e162]:
+          - button "Pick a random benign call" [ref=f2e163] [cursor=pointer]
+          - button "▶ Replay" [ref=f2e164] [cursor=pointer]
+          - generic [ref=f2e165]:
+            - text: speed
+            - combobox "speed" [ref=f2e166]:
+              - option "slow"
+              - option "normal" [selected]
+              - option "fast"
+        - paragraph [ref=f2e167]: The reader called this slide Benign. The sign-out check runs on that call when the replay ends.
