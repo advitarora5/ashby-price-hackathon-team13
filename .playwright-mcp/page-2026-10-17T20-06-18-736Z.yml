@@ -1,0 +1,102 @@
+- generic [ref=f3e3]:
+  - banner [ref=f3e4]:
+    - generic [ref=f3e5]: ◐ SecondLook
+    - navigation [ref=f3e6]:
+      - button "Review" [ref=f3e7] [cursor=pointer]
+      - button "Evaluation" [active] [ref=f3e8] [cursor=pointer]
+    - generic "Record your own read before any AI evidence is shown, on every case" [ref=f3e9]:
+      - checkbox "Blind-first for all cases" [ref=f3e10]
+      - text: Blind-first for all cases
+    - generic [ref=f3e11]: "Experimental decision support · never a diagnosis · data: real CAMELYON16 slides; tumour probe trained on 12 slides"
+  - generic [ref=f3e74]:
+    - heading "Evaluation results" [level=2] [ref=f3e75]
+    - paragraph [ref=f3e76]:
+      - text: Each measure is tested on the dataset that fits it (lymph node, prostate, colon). These are separate module-level evaluations, not an end-to-end clinical validation. Numbers come straight from
+      - code [ref=f3e77]: bundle/eval/*.json
+      - text: .
+    - generic [ref=f3e78]:
+      - generic [ref=f3e79]:
+        - generic [ref=f3e80]:
+          - heading "Artifact gate" [level=3] [ref=f3e81]
+          - generic [ref=f3e82]: "#3 evidence"
+        - generic [ref=f3e83]: CAMELYON16 training-slide tiles
+        - generic [ref=f3e84]:
+          - generic [ref=f3e85]: Ink recall on injected pen strokes (sanity only)
+          - generic [ref=f3e86]: 54%
+        - generic [ref=f3e87]:
+          - generic [ref=f3e88]: Blur recall on injected blur (sanity only)
+          - generic [ref=f3e89]: 97%
+        - generic [ref=f3e90]:
+          - generic [ref=f3e91]: Clean tiles wrongly flagged (any rule)
+          - generic [ref=f3e92]: 0.0% max per flag
+        - list [ref=f3e93]:
+          - listitem [ref=f3e94]: Injected damage only checks the rules fire; the reportable number needs real labelled tiles.
+          - listitem [ref=f3e95]: no manual labels yet (artifact_labels.csv); run with --sheet and have teammates fill it
+        - button "show raw JSON" [ref=f3e96] [cursor=pointer]
+      - generic [ref=f3e97]:
+        - generic [ref=f3e98]:
+          - heading "Disagreement routing catches model mistakes" [level=3] [ref=f3e99]
+          - generic [ref=f3e100]: "#2 routing"
+        - generic [ref=f3e101]: NCT-CRC-HE test tiles; CAMELYON16 test-slide tiles
+        - generic [ref=f3e102]:
+          - generic [ref=f3e103]: "Lymph node (CAMELYON16): share of model errors in the top 15% most-disputed tiles"
+          - generic [ref=f3e104]: 65.1%
+          - generic [ref=f3e105]: 52.0%-86.5%
+          - generic [ref=f3e106]: "best baseline: entropy 89.2%; random 16.9%; error rate left in fast tier 0.2%"
+        - list [ref=f3e107]:
+          - listitem [ref=f3e108]: "Colon (NCT): need NCT test predictions for quiltnet and plip"
+          - listitem [ref=f3e109]: "Lymph node (CAMELYON16): disagreement does not beat every baseline with a CI excluding zero; per the plan the queue is kept only as a baseline comparison."
+          - listitem [ref=f3e110]: Tiering therefore uses single-model entropy (the stronger baseline); disagreement is still shown.
+          - listitem [ref=f3e111]: "Models: QuiltNet and PLIP only (PathGen-CLIP gated; CONCH/MUSK not approved)."
+        - button "show raw JSON" [ref=f3e112] [cursor=pointer]
+      - generic [ref=f3e113]:
+        - generic [ref=f3e114]:
+          - heading "Feature bars match tissue labels" [level=3] [ref=f3e115]
+          - generic [ref=f3e116]: "#1 evidence"
+        - generic [ref=f3e117]: NCT-CRC-HE (colon) and CAMELYON16 test slides (lymph node)
+        - generic [ref=f3e118]:
+          - generic [ref=f3e119]: Lymph node 'metastasis' bar AUROC (text), 4 test slides
+          - generic [ref=f3e120]: "0.702"
+          - generic [ref=f3e121]: 0.671-0.890
+        - generic [ref=f3e122]:
+          - generic [ref=f3e123]: Tumour probe tile AUROC on the same tiles
+          - generic [ref=f3e124]: "0.931"
+          - generic [ref=f3e125]: 0.779-0.999
+        - list [ref=f3e126]:
+          - listitem [ref=f3e127]: "NCT tiles have no patient ids: tile-level bootstrap, no claim beyond tile level."
+          - listitem [ref=f3e128]: Features without a labelled counterpart (irregular nuclei, mitoses) are not evaluated and carry a badge.
+        - button "show raw JSON" [ref=f3e129] [cursor=pointer]
+      - generic [ref=f3e130]:
+        - heading "policy" [level=3] [ref=f3e132]
+        - generic [ref=f3e133]: CrowdGleason test (expert ground truth)
+        - button "show raw JSON" [ref=f3e134] [cursor=pointer]
+      - generic [ref=f3e135]:
+        - generic [ref=f3e136]:
+          - heading "Unseen-tissue alerts catch search misses" [level=3] [ref=f3e137]
+          - generic [ref=f3e138]: "#4 attention"
+        - generic [ref=f3e139]: PathoGaze experiment I (10 pathologists) on CAMELYON16 test slides
+        - generic [ref=f3e140]:
+          - generic [ref=f3e141]: Benign calls on tumour slides that were search misses (never fixated tumour)
+          - generic [ref=f3e142]: 16/22 (73%)
+          - generic [ref=f3e143]: "miss types: {'search': 16, 'decision': 6}; the abstract reported 67.5%"
+        - generic [ref=f3e144]:
+          - generic [ref=f3e145]: Search misses caught at <= 0.5 alert regions per benign read
+          - generic [ref=f3e146]: 38%
+          - generic [ref=f3e147]: by slide 0%-100%
+          - generic [ref=f3e148]: "realised 0.44 alerts/read; baselines: ai_ignoring_log 38%, colorhist_control 0%, random_unseen 2%, densest_unseen 0%, colleague_read 30%"
+        - generic [ref=f3e149]:
+          - generic [ref=f3e150]: Search misses caught at <= 1.0 alert regions per benign read
+          - generic [ref=f3e151]: 69%
+          - generic [ref=f3e152]: by slide 0%-100%
+          - generic [ref=f3e153]: "realised 0.81 alerts/read; baselines: ai_ignoring_log 69%, colorhist_control 0%, random_unseen 2%, densest_unseen 0%, colleague_read 30%"
+        - generic [ref=f3e154]:
+          - generic [ref=f3e155]: Search misses caught at <= 2.0 alert regions per benign read
+          - generic [ref=f3e156]: 69%
+          - generic [ref=f3e157]: by slide 0%-100%
+          - generic [ref=f3e158]: "realised 1.41 alerts/read; baselines: ai_ignoring_log 69%, colorhist_control 0%, random_unseen 4%, densest_unseen 0%, colleague_read 30%"
+        - list [ref=f3e159]:
+          - listitem [ref=f3e160]: "Development scale: only 4 of the 60 PathoGaze slides are processed so far; wide CIs."
+          - listitem [ref=f3e161]: "Effective sample: 4 slides (3 with tumour), 16 search-miss reads."
+          - listitem [ref=f3e162]: Isolated tumour cells are mostly invisible at tile level; expect alerts to work for micro/macro metastases.
+          - listitem [ref=f3e163]: Viewport-only coverage is a weaker definition of 'seen' and is reported separately.
+        - button "show raw JSON" [ref=f3e164] [cursor=pointer]
