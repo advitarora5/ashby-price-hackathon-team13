@@ -28,7 +28,7 @@ from secondlook.pipeline.datasets.pathogaze import is_benign_call, load as load_
 from secondlook.pipeline.regions import find_regions, smoothed
 from secondlook.store import db
 
-TAUS = np.round(np.arange(0.20, 1.0001, 0.025), 3)
+TAUS = np.round(np.arange(0.20, 1.0001, 0.05), 3)
 BUDGETS = (0.5, 1.0, 2.0)
 MAX_ALERTS = 2
 VARIANTS = {
@@ -72,17 +72,25 @@ class SlideCtx:
         return [bool(target[self.lut[r.rows, r.cols]].any()) for r in regions]
 
 
+_IGNORE_CACHE: dict = {}
+
+
 def alert_curve(ctx: SlideCtx, risk: np.ndarray, seen: np.ndarray, target: np.ndarray, ignore_log=False):
-    """For each tau: (number of alerts, hit) with alerts = top-2 regions at seed tau."""
-    mask = ctx.tissue if ignore_log else (ctx.tissue & ~seen)
-    g = ctx.grid_of(risk, mask)
-    fin = np.isfinite(g)
-    n, h = [], []
-    for tau in TAUS:
-        regs = find_regions(g, fin, tau, ctx.grid, max_regions=MAX_ALERTS)
-        n.append(len(regs))
-        h.append(any(ctx.hits(regs, target)))
-    return np.array(n), np.array(h)
+    """For each tau: (number of alerts, hit) with alerts = top-2 regions at seed tau.
+    With ignore_log the regions do not depend on the read, so they are cached per slide."""
+    key = (ctx.sid, id(risk)) if ignore_log else None
+    if key is not None and key in _IGNORE_CACHE:
+        per_tau = _IGNORE_CACHE[key]
+    else:
+        mask = ctx.tissue if ignore_log else (ctx.tissue & ~seen)
+        g = ctx.grid_of(risk, mask)
+        fin = np.isfinite(g)
+        per_tau = [find_regions(g, fin, tau, ctx.grid, max_regions=MAX_ALERTS) for tau in TAUS]
+        if key is not None:
+            _IGNORE_CACHE[key] = per_tau
+    n = np.array([len(r) for r in per_tau])
+    h = np.array([any(ctx.hits(r, target)) for r in per_tau])
+    return n, h
 
 
 def random_unseen_hit(ctx, seen, target, k, rng, draws=20):
@@ -206,26 +214,31 @@ def evaluate_variant(df, ctxs, reads, folds, reps, rng) -> dict:
               "n_search_miss": int(len(miss)), "miss_typology": typology,
               "search_miss_share": float(len(miss) / len(tum_benign)) if len(tum_benign) else None,
               "mean_seen_share": float(df.seen_share.mean()), "budgets": {}}
-    for b in BUDGETS:
-        tau_idx = np.zeros(len(ben), int)
+    def budget_matched(Nm, Hm, b):
+        """Fold-wise tau fit on the other folds' slides for THIS method's own alert counts,
+        so every method is compared at the same alert budget."""
+        idx = np.zeros(len(ben), int)
         taus = {}
         for f in range(folds):
             test = ben_fold == f
             if not test.any():
                 continue
-            tau = _tau_for_budget(N[~test], b)                 # fit on other folds' slides only
-            taus[f] = tau
-            tau_idx[test] = int(np.argmin(np.abs(TAUS - tau)))
+            taus[f] = _tau_for_budget(Nm[~test], b)
+            idx[test] = int(np.argmin(np.abs(TAUS - taus[f])))
         rows = np.arange(len(ben))
-        n_alerts = N[rows, tau_idx]
-        hit_ai = H[rows, tau_idx].astype(float)
-        hit_ig = np.stack(ben.h_ig.to_numpy())[rows, tau_idx].astype(float) if len(ben) else hit_ai
-        base = {"ai_unseen": hit_ai}
-        # ignoring the log: same AI, regions over all tissue, matched counts via the same tau
-        base["ai_ignoring_log"] = hit_ig
+        return Nm[rows, idx], Hm[rows, idx].astype(float), taus
+
+    methods = {"ai_unseen": (N, H)}
+    if len(ben):
+        methods["ai_ignoring_log"] = (np.stack(ben.n_ig.to_numpy()), np.stack(ben.h_ig.to_numpy()))
         if "h_ctrl" in ben:
-            Hc = np.stack(ben.h_ctrl.to_numpy())
-            base["colorhist_control"] = Hc[rows, tau_idx].astype(float)
+            methods["colorhist_control"] = (np.stack(ben.n_ctrl.to_numpy()), np.stack(ben.h_ctrl.to_numpy()))
+    for b in BUDGETS:
+        base, realised, taus = {}, {}, {}
+        for name, (Nm, Hm) in methods.items():
+            n_m, h_m, t_m = budget_matched(Nm, Hm, b)
+            base[name], realised[name], taus[name] = h_m, float(n_m.mean()) if len(n_m) else 0.0, t_m
+        n_alerts = budget_matched(N, H, b)[0]
         rnd, dense = np.zeros(len(ben)), np.zeros(len(ben))
         for i in miss:
             ctx = ctxs[ben.slide_id.iat[i]]
@@ -242,7 +255,8 @@ def evaluate_variant(df, ctxs, reads, folds, reps, rng) -> dict:
             others = reads[(reads.slide_id == ben.slide_id.iat[i]) & (reads.participant != ben.reader.iat[i])]
             coll[i] = float((~others.decision.map(is_benign_call)).mean()) if len(others) else np.nan
         base["colleague_read"] = coll
-        entry = {"taus_by_fold": taus, "alerts_per_benign_read": float(n_alerts.mean()),
+        entry = {"taus_by_fold": taus, "realised_alerts_per_read_by_method": realised,
+                 "alerts_per_benign_read": float(n_alerts.mean()),
                  "alerts_per_benign_read_on_benign_slides": float(n_alerts[~ben.tumor_slide.to_numpy()].mean())
                  if (~ben.tumor_slide).any() else None, "catch": {}}
         if len(miss):
@@ -256,7 +270,8 @@ def evaluate_variant(df, ctxs, reads, folds, reps, rng) -> dict:
                     "ci_by_slide": ci(group_bootstrap(lambda i: np.nanmean(vm[i]), g_slide, len(vm), reps=reps)),
                     "ci_by_reader": ci(group_bootstrap(lambda i: np.nanmean(vm[i]), g_reader, len(vm), reps=reps)),
                     "n": int(ok.sum()),
-                    "cost": "one extra full human read" if name == "colleague_read" else "alerts as above"}
+                    "cost": "one extra full human read" if name == "colleague_read" else
+                            f"{realised.get(name, float(n_alerts.mean())):.2f} alerts per benign read"}
         result["budgets"][str(b)] = entry
     b1 = result["budgets"]["1.0"]["catch"].get("ai_unseen", {})
     result["summary"] = {"search_misses": result["n_search_miss"], "catch_at_1": b1.get("rate"),
@@ -300,6 +315,11 @@ def build_doc(primary, variants, n_slides, slides) -> dict:
                      "status": "info",
                      "note": f"realised {e['alerts_per_benign_read']:.2f} alerts/read; baselines: " +
                              ", ".join(f"{k} {v:.0%}" for k, v in others.items() if v == v)})
+    c1 = primary["budgets"]["1.0"]["catch"]
+    if "ai_ignoring_log" in c1 and c1["ai_ignoring_log"]["rate"] >= c1["ai_unseen"]["rate"] - 0.01:
+        caveats.append("At equal alert budget the same AI ignoring the gaze log catches as many search misses: "
+                       "benign callers rarely fixated the top-risk tissue, so the log changes few alerts. The added "
+                       "value of coverage is not shown for catch rate here.")
     caveats += [f"Effective sample: {n_slides} slides ({n_tumor_slides} with tumour), {primary['n_search_miss']} search-miss reads.",
                 "Isolated tumour cells are mostly invisible at tile level; expect alerts to work for micro/macro metastases.",
                 "Viewport-only coverage is a weaker definition of 'seen' and is reported separately."]

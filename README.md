@@ -53,8 +53,9 @@ python -m secondlook.eval.run_all       # writes bundle/eval/*.json, thresholds.
 | # | Measure | Result | Scale |
 |---|---|---|---|
 | 5 | Human reads vs expert agreement (CrowdGleason, real labels) | 1 resident 74.3%; 2 + arbitration 85.3% at 241 reads/100; majority of 5 92.5%; of 7 98.5% | 2,812 patches, 232 slides, slide bootstrap |
-| 4 | Search misses among benign calls on tumour slides | 16/22 (73%); abstract reported 67.5% | 4 of 60 PathoGaze slides |
-| 4 | Search misses caught at <=1 alert per benign read | 69% (CI 0-100% by slide); AI ignoring the gaze log also 69%; colleague read 30% | same |
+| 4 | Search misses among benign calls on tumour slides | 56/69 (81%); abstract reported 67.5% | 18 of 60 PathoGaze slides |
+| 4 | Search misses caught at <=1 alert per benign read (budget-matched, nested CV) | 55% (CI 21-88% by slide); random unseen 1%; colour control 0%; colleague read 27% | same |
+| 4 | Same AI ignoring the gaze log, same budget | 55%: benign callers rarely fixated the top-risk tissue, so coverage adds no catch here | same |
 | 2 | Errors in top-15% most-disputed lymph-node tiles | disagreement 65% vs entropy 89% -> **routing switched to entropy** | 4 slides |
 | 1 | Lymph-node `metastasis` text bar AUROC / tumour probe AUROC | 0.70 / 0.93 | 4 slides |
 | - | Tumour probe, out-of-fold tile AUROC (slide-grouped) | QuiltNet 0.942, PLIP 0.929, colour control 0.880 | 12 training slides |
@@ -70,11 +71,11 @@ The probe localises tumour on test_065 and test_122 but misses test_084 entirely
 - [x] Frontend workspace verified in a browser: queue, viewer + overlays, evidence, unseen alerts, policy, replay, evaluation page
 - [x] Real replay of a PathoGaze read through the live coverage/sign-out code (test_065, P10: the alert hit the unseen tumour)
 - [x] Evaluations #1-#5 implemented; light cut-offs and routing signal written to `thresholds.json` by evaluation
-- [ ] Process all 60 PathoGaze slides (`scripts/process_pathogaze_local.sh` running; downloads in progress)
-- [ ] NCT-CRC-HE-100K: unzip (integrity-check first), `run_nct all`, rerun features + disagreement evals
+- [ ] Process all 60 PathoGaze slides (`scripts/process_pathogaze_local.sh` running: 19/60 scored; reruns all evals when done)
+- [ ] NCT-CRC-HE-100K: zip repaired and md5-verified; unzip -> `run_nct` (40K-tile cap locally) -> features + disagreement evals (chained, running)
 - [ ] Full CAMELYON16 training on Delta (`scripts/delta/`); retrain, rescore
 - [ ] Prostate probe on Delta -> `bundle/eval/crowdgleason_test_ai.parquet` -> AI-supported policy row
-- [ ] Real artifact labels: `python -m secondlook.eval.artifacts_eval --sheet`, teammates fill the CSV
+- [ ] Real artifact labels: sheet exported to `raw/artifact_sheet/` (216 tiles, flags hidden); teammates fill the CSV, save as `raw/artifact_labels.csv`
 - [ ] Validation-derived tier cut-off (rank-based top 15% until then; the UI says so)
 
 ## Known facts and caveats
