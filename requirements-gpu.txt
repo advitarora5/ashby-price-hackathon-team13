@@ -4,3 +4,6 @@
 open_clip_torch>=3.0
 transformers>=4.40
 huggingface_hub>=0.23
+# CONCH and MUSK (weights are gated or preloaded on Delta; see scripts/delta/common.sh)
+conch @ git+https://github.com/Mahmoodlab/CONCH.git
+musk @ git+https://github.com/lilab-stanford/MUSK.git

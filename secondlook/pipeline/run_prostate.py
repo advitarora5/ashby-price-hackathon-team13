@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from secondlook.config import PRIMARY_MODEL, PROSTATE_CLASSES, RAW_DIR, WORK_DIR, bundle_paths
+from secondlook.config import PATHOLOGY_MODELS, PRIMARY_MODEL, PROSTATE_CLASSES, RAW_DIR, WORK_DIR, bundle_paths
 from secondlook.pipeline.datasets.crowdgleason import MARKERS, load_split
 from secondlook.store.arrays import read_matrix, read_parquet, write_matrix, write_parquet
 
@@ -95,7 +95,7 @@ def stage_train(models, label_col="DS"):
     out = pd.DataFrame({"patch_id": te.patch_id, "ai_class": P.argmax(1), "ai_conf": P.max(1), "ai_entropy": entropy(P)})
     for k, c in enumerate(PROSTATE_CLASSES):
         out[f"p_{c}"] = P[:, k]
-    path_models = [m for m in probs if m in ("quiltnet", "plip", "pathgen")]
+    path_models = [m for m in probs if m in PATHOLOGY_MODELS]
     if len(path_models) >= 2:
         comp = components({m: probs[m] for m in path_models})
         out["ai_disagreement"] = np.mean([midrank_percentile(v, np.sort(v)) for v in comp.values()], axis=0)

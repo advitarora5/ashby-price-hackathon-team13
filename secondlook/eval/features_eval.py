@@ -14,7 +14,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from secondlook.config import NCT_CLASSES, NCT_CLASS_NAMES, PRIMARY_MODEL, bundle_paths
+from secondlook.config import (CONTROL_MODELS, NCT_CLASSES, NCT_CLASS_NAMES, PATHOLOGY_MODELS, PRIMARY_MODEL,
+                               SECONDARY_MODEL, bundle_paths)
 from secondlook.eval.stats import auroc, brier, ci, ece, group_bootstrap, write_eval
 from secondlook.pipeline.features import load_features
 from secondlook.pipeline.run_nct import WORK as NCT_WORK
@@ -27,7 +28,7 @@ def _boot_auc(y, s, groups=None):
     return ci(group_bootstrap(lambda i: auroc(y[i], s[i]), groups, len(y), reps=REPS))
 
 
-def colon(models=("quiltnet", "plip", "colorhist", "imagenet")) -> dict:
+def colon(models=PATHOLOGY_MODELS + CONTROL_MODELS) -> dict:
     preds = {m: pd.read_parquet(NCT_WORK / f"test_preds_{m}.parquet") for m in models
              if (NCT_WORK / f"test_preds_{m}.parquet").exists()}
     if PRIMARY_MODEL not in preds:
@@ -63,7 +64,7 @@ def colon(models=("quiltnet", "plip", "colorhist", "imagenet")) -> dict:
     max_train = __import__("json").loads(rep_p.read_text()).get("max_train") if rep_p.exists() else None
     return {"available": True, "protocol": protocol(), "max_train_tiles": max_train, "n_tiles": int(len(P)), "per_feature": rows,
             "median_auroc": {k: med(k) for k in ("text_raw_auroc", "text_cal_auroc", "probe_auroc",
-                                                 "imagenet_probe_auroc", "colorhist_probe_auroc", "plip_text_raw_auroc")},
+                                                 "imagenet_probe_auroc", "colorhist_probe_auroc", f"{SECONDARY_MODEL}_text_raw_auroc")},
             "mean_ece": {k: float(df[k].mean()) for k in ("text_raw_ece", "text_cal_ece", "probe_ece") if k in df},
             "tissue_probe_accuracy": {m: float((D[[f"p_{c}" for c in NCT_CLASSES]].to_numpy().argmax(1)
                                                 == D.label.to_numpy()).mean()) for m, D in preds.items()}}

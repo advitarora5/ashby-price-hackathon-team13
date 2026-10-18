@@ -4,7 +4,8 @@ Pathology encoders (vision-language, so they also embed text prompts):
   quiltnet  - open_clip hf-hub:wisdomik/QuiltNet-B-32 (MIT)
   plip      - transformers vinid/plip
   pathgen   - open_clip ViT-B-16 + jamessyx/PathGen-CLIP (gated: needs HF_TOKEN + accepted terms)
-  conch / musk - only if weights and approval exist (raise ModelUnavailable otherwise)
+  conch     - MahmoodLab CONCH ViT-B/16, 448 px (gated; SECONDLOOK_CONCH_WEIGHTS = local checkpoint, e.g. Delta copy)
+  musk      - MUSK large/16, 384 px (gated; SECONDLOOK_MUSK_WEIGHTS = local checkpoint, e.g. Delta copy)
 Controls (image only):
   imagenet  - torchvision ViT-B/16 IMAGENET1K_V1, CLS token
   colorhist - 8x8x8 RGB histogram, Hellinger-normalised (no torch needed)
@@ -20,6 +21,8 @@ MODEL_VERSIONS = {
     "quiltnet": "hf-hub:wisdomik/QuiltNet-B-32",
     "plip": "hf:vinid/plip",
     "pathgen": "hf:jamessyx/PathGen-CLIP/pathgenclip.pt (open_clip ViT-B-16)",
+    "conch": "hf:MahmoodLab/conch (conch_ViT-B-16)",
+    "musk": "hf:xiangjx/musk (musk_large_patch16_384)",
     "imagenet": "torchvision:vit_b_16/IMAGENET1K_V1",
     "colorhist": "rgb_hist_8x8x8_hellinger_v1",
 }
@@ -27,6 +30,10 @@ MODEL_VERSIONS = {
 
 class ModelUnavailable(RuntimeError):
     pass
+
+
+def _hf_token() -> str | None:
+    return os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
 
 
 def _device():
@@ -52,8 +59,9 @@ class Encoder:
 
 
 class _TorchVisionEncoder(Encoder):
-    """Shared preprocessing: uint8 -> float tensor, resize 224, normalise."""
+    """Shared preprocessing: uint8 -> float tensor, resize to `size`, normalise."""
 
+    size = 224
     mean = (0.48145466, 0.4578275, 0.40821073)  # CLIP
     std = (0.26862954, 0.26130258, 0.27577711)
 
@@ -62,8 +70,8 @@ class _TorchVisionEncoder(Encoder):
         import torch.nn.functional as F
 
         t = torch.from_numpy(np.ascontiguousarray(batch)).to(self.device).permute(0, 3, 1, 2).float() / 255.0
-        if t.shape[-1] != 224 or t.shape[-2] != 224:
-            t = F.interpolate(t, size=(224, 224), mode="bicubic", align_corners=False, antialias=True)
+        if t.shape[-1] != self.size or t.shape[-2] != self.size:
+            t = F.interpolate(t, size=(self.size, self.size), mode="bicubic", align_corners=False, antialias=True)
         m = torch.tensor(self.mean, device=self.device).view(1, 3, 1, 1)
         s = torch.tensor(self.std, device=self.device).view(1, 3, 1, 1)
         t = (t - m) / s
@@ -158,6 +166,98 @@ def _features(out):
     return out if hasattr(out, "float") else out.pooler_output
 
 
+class ConchEncoder(_TorchVisionEncoder):
+    """CONCH (Lu et al., Nat Med 2024). Square tiles resized to 448, CLIP normalisation,
+    i.e. the model's own resize + centre crop."""
+
+    has_text = True
+    size = 448
+    dim = 512
+
+    def __init__(self):
+        import torch
+        from conch.open_clip_custom import create_model_from_pretrained, get_tokenizer
+
+        self.name = "conch"
+        self.device = _device()
+        ckpt = os.environ.get("SECONDLOOK_CONCH_WEIGHTS") or "hf_hub:MahmoodLab/conch"
+        model, _ = create_model_from_pretrained("conch_ViT-B-16", checkpoint_path=ckpt, hf_auth_token=_hf_token())
+        model.eval().to(self.device)
+        if self.device == "cuda":
+            model = model.half()
+        self.model = model
+        self.tokenizer = get_tokenizer()
+        with torch.no_grad():
+            self._scale = float(model.logit_scale.exp().item())
+
+    @property
+    def logit_scale(self) -> float:
+        return self._scale
+
+    def encode_images(self, batch):
+        import torch
+
+        with torch.no_grad():
+            return self._norm(self.model.encode_image(self._prep(batch), proj_contrast=True, normalize=False))
+
+    def encode_text(self, texts):
+        import torch
+        from conch.open_clip_custom import tokenize
+
+        with torch.no_grad():
+            tok = tokenize(texts=texts, tokenizer=self.tokenizer).to(self.device)
+            return self._norm(self.model.encode_text(tok))
+
+
+class MuskEncoder(_TorchVisionEncoder):
+    """MUSK (Xiang et al., Nature 2025). 384 px, Inception normalisation, global
+    contrastive heads (ms_aug off so image and text sit in the same space)."""
+
+    has_text = True
+    size = 384
+    dim = 1024
+    mean = (0.5, 0.5, 0.5)
+    std = (0.5, 0.5, 0.5)
+
+    def __init__(self):
+        from pathlib import Path
+
+        import musk
+        from musk import modeling, utils  # noqa: F401  (modeling registers the timm architecture)
+        from timm.models import create_model
+        from transformers import XLMRobertaTokenizer
+
+        self.name = "musk"
+        self.device = _device()
+        model = create_model("musk_large_patch16_384")
+        ckpt = os.environ.get("SECONDLOOK_MUSK_WEIGHTS") or "hf_hub:xiangjx/musk"
+        utils.load_model_and_may_interpolate(ckpt, model, "model|module", "")
+        model.eval().to(self.device)
+        if self.device == "cuda":
+            model = model.half()
+        self.model = model
+        spm = os.environ.get("SECONDLOOK_MUSK_TOKENIZER") or str(Path(musk.__file__).parent / "models" / "tokenizer.spm")
+        self.tokenizer = XLMRobertaTokenizer(spm)
+
+    def encode_images(self, batch):
+        import torch
+
+        with torch.no_grad():
+            out = self.model(image=self._prep(batch), with_head=True, out_norm=True, ms_aug=False, return_global=True)
+            return self._norm(out[0])
+
+    def encode_text(self, texts):
+        import torch
+        from musk import utils
+
+        ids, pads = zip(*(utils.xlm_tokenizer(t, self.tokenizer, max_len=100) for t in texts))
+        with torch.no_grad():
+            out = self.model(text_description=torch.tensor(ids, device=self.device),
+                             padding_mask=torch.tensor(pads, device=self.device),
+                             with_head=True, out_norm=True, ms_aug=False, return_global=True)
+            return self._norm(out[1])
+
+
 class ImageNetViT(_TorchVisionEncoder):
     mean = (0.485, 0.456, 0.406)
     std = (0.229, 0.224, 0.225)
@@ -201,11 +301,10 @@ def get_encoder(name: str) -> Encoder:
     if name == "plip":
         return HFClipEncoder("plip", "vinid/plip")
     if name == "pathgen":
-        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
         try:
             from huggingface_hub import hf_hub_download
 
-            path = hf_hub_download("jamessyx/PathGen-CLIP", "pathgenclip.pt", token=token)
+            path = hf_hub_download("jamessyx/PathGen-CLIP", "pathgenclip.pt", token=_hf_token())
         except Exception as e:
             raise ModelUnavailable(f"PathGen-CLIP weights are gated ({type(e).__name__}); "
                                    "accept the terms on Hugging Face and set HF_TOKEN") from e
@@ -215,7 +314,13 @@ def get_encoder(name: str) -> Encoder:
     if name == "colorhist":
         return ColorHist()
     if name in ("conch", "musk"):
-        raise ModelUnavailable(f"{name} weights are not approved for this project yet")
+        try:
+            return ConchEncoder() if name == "conch" else MuskEncoder()
+        except ImportError as e:
+            raise ModelUnavailable(f"{name} package not installed ({e}); see requirements-gpu.txt") from e
+        except Exception as e:
+            raise ModelUnavailable(f"{name} weights could not be loaded ({type(e).__name__}: {e}); set "
+                                   f"SECONDLOOK_{name.upper()}_WEIGHTS to a local checkpoint or HF_TOKEN") from e
     raise KeyError(name)
 
 
