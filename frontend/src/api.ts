@@ -1,6 +1,6 @@
 import type {
-  CaseDetail, CaseRow, Coverage, Decision, Evidence, PolicyRec, PolicySummary, Read, RecordedRead,
-  Regions, ReplayStep, Signout, ViewEvent,
+  CaseDetail, CaseRow, Coverage, Decision, Evidence, NoteVersion, PolicyRec, PolicySummary, Read, RecordedRead,
+  Regions, ReplayStep, Signout, Verdict, ViewEvent,
 } from './types'
 
 export class ApiError extends Error {
@@ -27,6 +27,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 const post = <T>(path: string, body?: unknown) => req<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) })
+const put = <T>(path: string, body: unknown) => req<T>(path, { method: 'PUT', body: JSON.stringify(body) })
 const q = (o: Record<string, string | number | null | undefined>) => {
   const s = new URLSearchParams()
   Object.entries(o).forEach(([k, v]) => { if (v !== null && v !== undefined) s.set(k, String(v)) })
@@ -53,6 +54,14 @@ export const api = {
   coverage: (id: string) => req<Coverage>(`/reads/${id}/coverage`),
   decision: (id: string, stage: string, decision: Decision) =>
     post<Read>(`/reads/${id}/decision`, { stage, decision, session_id: SESSION_ID }),
+  saveNotes: (id: string, notes: string) => put<Read>(`/reads/${id}/notes`, { notes, session_id: SESSION_ID }),
+  // survives the page being closed or the case being switched mid-request
+  saveNotesOnLeave: (id: string, notes: string) =>
+    fetch(`/api/reads/${id}/notes`, { method: 'PUT', keepalive: true, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes, session_id: SESSION_ID }) }).catch(() => undefined),
+  history: (id: string, feature_id = '') => req<NoteVersion[]>(`/reads/${id}/history${q({ feature_id })}`),
+  reviewFeature: (id: string, feature: string, verdict: Verdict, note: string) =>
+    put<Read>(`/reads/${id}/features/${feature}`, { verdict, note, session_id: SESSION_ID }),
   signout: (id: string, decision: Decision) =>
     post<Signout>(`/reads/${id}/signout`, { decision, session_id: SESSION_ID }),
   policy: (id: string) => req<PolicyRec>(`/reads/${id}/policy`),

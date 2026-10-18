@@ -1,5 +1,6 @@
 export type Tier = 'fast' | 'slow' | 'unavailable'
 export type Decision = 'benign' | 'suspicious' | 'malignant'
+export type Verdict = 'agree' | 'disagree' | 'unsure'
 export type Light = 'green' | 'amber' | 'red' | 'unavailable' | 'not_required'
 
 export interface CaseRow {
@@ -14,6 +15,8 @@ export interface CaseRow {
   tier: Tier
   tier_rule: string | null
   artifact_share: number | null
+  tissue_artifact_share: number | null
+  tier_reasons: string[]
   review_status: string
   recorded_reads: number
 }
@@ -91,6 +94,28 @@ export interface Read {
   evidence_visible: boolean
   source: string
   replay_of: string | null
+  notes: string | null
+  notes_saved_at: string | null
+  feature_reviews: FeatureReview[]
+  signout_missing: string[]
+  signed_out_at: string | null
+  next_seq: number
+  last_t_ms: number
+  resumed: boolean
+}
+
+export interface NoteVersion {
+  feature_id: string
+  version: number
+  verdict: Verdict | null
+  text: string | null
+  saved_at: string
+}
+
+export interface FeatureReview {
+  feature_id: string
+  verdict: Verdict
+  note: string | null
 }
 
 export interface ViewEvent {

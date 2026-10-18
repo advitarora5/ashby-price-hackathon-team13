@@ -1,4 +1,5 @@
-import type { Evidence, Rect, Region } from '../types'
+import { useState } from 'react'
+import type { Evidence, FeatureReview, Rect, Region, Verdict } from '../types'
 import Exemplars from './Exemplars'
 
 interface Props {
@@ -7,11 +8,35 @@ interface Props {
   evidenceRegions: Region[]
   disputed: Region[]
   onJump: (r: Rect, what: string) => void
+  reviews: FeatureReview[] | null   // null: this read cannot record verdicts (no live read, or AI still hidden)
+  reviewKey: string
+  onReview: (feature: string, verdict: Verdict, note: string) => void
 }
 
 const pct = (v: number) => `${Math.round(v * 100)}%`
+const VERDICTS: Verdict[] = ['agree', 'disagree', 'unsure']
 
-export default function EvidencePanel({ ev, loading, evidenceRegions, disputed, onJump }: Props) {
+function FeatureVerdict({ feature, review, onReview }: { feature: string; review?: FeatureReview; onReview: Props['onReview'] }) {
+  const [note, setNote] = useState(review?.note ?? '')
+  const saveNote = () => { if (review && note.trim() !== (review.note ?? '')) onReview(feature, review.verdict, note) }
+  return (
+    <div className="verdict-row">
+      <div className="seg" role="group" aria-label="your verdict">
+        {VERDICTS.map((v) => (
+          <button key={v} className={`seg-btn v-${v} ${review?.verdict === v ? 'on' : ''}`} aria-pressed={review?.verdict === v}
+            onClick={() => onReview(feature, v, note)}>{v}</button>
+        ))}
+      </div>
+      <input className="verdict-note" value={note} placeholder={review ? 'note (optional)' : 'pick a verdict, then add a note'}
+        onChange={(e) => setNote(e.target.value)} onBlur={saveNote}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
+    </div>
+  )
+}
+
+export default function EvidencePanel({ ev, loading, evidenceRegions, disputed, onJump, reviews, reviewKey, onReview }: Props) {
+  const byFeature = new Map((reviews ?? []).map((r) => [r.feature_id, r]))
+  const left = reviews ? (ev?.features ?? []).filter((f) => !byFeature.has(f.id)).length : 0
   return (
     <section className="panel">
       <div className="panel-head">
@@ -45,6 +70,12 @@ export default function EvidencePanel({ ev, loading, evidenceRegions, disputed, 
           {ev.artifacts.length > 0 && (
             <div className="chips">{ev.artifacts.map((a) => <span key={a} className={`chip art art-${a}`}>⚠ {a}</span>)}</div>
           )}
+          {reviews && ev.features.length > 0 && (
+            <div className={`small ${left ? 'warn-text' : 'ok-text'} verdict-head`}>
+              {left ? `Your verdict on each feature for the whole slide: ${left} of ${ev.features.length} left` : 'All features reviewed'}
+              <span className="muted"> · bars show the selected tile</span>
+            </div>
+          )}
           <div className="bars">
             {ev.features.map((f) => (
               <div key={f.id} className="bar-row">
@@ -66,6 +97,7 @@ export default function EvidencePanel({ ev, loading, evidenceRegions, disputed, 
                       onClick={() => onJump(f.jump_links[0], `jump:${f.id}`)}>where ↗</button>
                   )}
                 </div>
+                {reviews && <FeatureVerdict key={`${reviewKey}:${f.id}`} feature={f.id} review={byFeature.get(f.id)} onReview={onReview} />}
               </div>
             ))}
           </div>

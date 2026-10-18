@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS cases (
     ai_max_risk        REAL,
     uncertainty_score  REAL,                 -- 90th pct of tile tumour-probe entropy (baseline signal)
     routing_signal     TEXT,                 -- which score set the tier: disagreement | entropy                 -- max smoothed tumour prob over non-artifact tissue (routing only)
+    tissue_artifact_share REAL,              -- blur/ink/fold tiles / tissue tiles (blank glass excluded)
+    tier_reasons       TEXT,                 -- comma list of what sent a case to the slow path: disagreement | entropy | artifacts
     review_status      TEXT NOT NULL DEFAULT 'unread'  -- unread | in_review | signed_out
 );
 
@@ -60,9 +62,33 @@ CREATE TABLE IF NOT EXISTS reads (
     last_light       TEXT,                   -- most recent sign-out light
     signout_attempts INTEGER NOT NULL DEFAULT 0,
     second_decision  TEXT,                   -- additional human readers (never the AI)
-    third_decision   TEXT
+    third_decision   TEXT,
+    notes            TEXT,                   -- the reader's full free-text notes for the case
+    notes_saved_at   TEXT                    -- first save; on blind reads this (plus an assessment) unlocks the AI
 );
 CREATE INDEX IF NOT EXISTS ix_reads_slide ON reads(slide_id, source);
+
+-- The reader's verdict on each AI feature bar (whole case), with an optional note.
+CREATE TABLE IF NOT EXISTS feature_reviews (
+    read_id    TEXT NOT NULL REFERENCES reads(read_id),
+    feature_id TEXT NOT NULL,
+    verdict    TEXT NOT NULL,                -- agree | disagree | unsure
+    note       TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (read_id, feature_id)
+);
+
+-- Every saved version of the reader's notes (feature_id '' = the main case notes) and of
+-- each feature verdict + note. Append-only: edits add a row, nothing is overwritten.
+CREATE TABLE IF NOT EXISTS note_versions (
+    read_id    TEXT NOT NULL REFERENCES reads(read_id),
+    feature_id TEXT NOT NULL DEFAULT '',
+    version    INTEGER NOT NULL,
+    verdict    TEXT,
+    text       TEXT,
+    saved_at   TEXT NOT NULL,
+    PRIMARY KEY (read_id, feature_id, version)
+);
 
 CREATE TABLE IF NOT EXISTS patches (
     patch_id  TEXT PRIMARY KEY,
