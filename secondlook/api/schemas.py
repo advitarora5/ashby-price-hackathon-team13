@@ -126,6 +126,7 @@ class ReadCreate(BaseModel):
     blind_all: bool = False
     coverage_mode: Literal["viewport", "gaze"] = "viewport"
     session_id: Optional[str] = None
+    resume: bool = Field(True, description="reopen this reader's latest live read of the case instead of starting a new one")
 
 
 class ReadOut(BaseModel):
@@ -143,6 +144,18 @@ class ReadOut(BaseModel):
     notes_saved_at: Optional[str] = None
     feature_reviews: list["FeatureReviewOut"] = []
     signout_missing: list[str] = Field([], description="what the reader still has to record before sign-out")
+    signed_out_at: Optional[str] = None
+    next_seq: int = Field(0, description="first free view-event sequence number (a resumed read continues from here)")
+    last_t_ms: float = 0.0
+    resumed: bool = False
+
+
+class NoteVersion(BaseModel):
+    feature_id: str
+    version: int
+    verdict: Optional[str] = None
+    text: Optional[str] = None
+    saved_at: str
 
 
 class NotesIn(BaseModel):

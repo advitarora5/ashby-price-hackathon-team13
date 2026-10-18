@@ -11,8 +11,8 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
-from secondlook.api.schemas import (CoverageOut, DecisionIn, EventsIn, FeatureReviewIn, NotesIn, ReadCreate, ReadOut,
-                                    SignoutIn, SignoutOut)
+from secondlook.api.schemas import (CoverageOut, DecisionIn, EventsIn, FeatureReviewIn, NotesIn, NoteVersion, ReadCreate,
+                                    ReadOut, SignoutIn, SignoutOut)
 from secondlook.api.services.common import (audit, case_row, evidence_gate, exemplar_payload, load_slide, read_row,
                                             requires_blind)
 from secondlook.api.services.evidence import feature_ids
@@ -84,17 +84,20 @@ def signout_missing(store: Store, con, read: dict, case: dict) -> list[str]:
     return missing
 
 
-def read_out(store: Store, con, read: dict) -> ReadOut:
+def read_out(store: Store, con, read: dict, resumed: bool = False) -> ReadOut:
     case = case_row(con, read["case_id"])
     visible, _ = evidence_gate(case, read)
     reviews = db.all_(con, "SELECT feature_id, verdict, note FROM feature_reviews WHERE read_id=? ORDER BY feature_id",
                       read["read_id"])
+    ev = db.one(con, "SELECT MAX(seq) s, MAX(t_ms) t FROM view_events WHERE read_id=?", read["read_id"])
     return ReadOut(read_id=read["read_id"], case_id=read["case_id"], review_mode=read["review_mode"] or "aided",
                    coverage_mode=read["coverage_mode"] or "viewport", tier=case.get("tier") or "unavailable",
                    initial_decision=read["initial_decision"], final_decision=read["final_decision"],
                    evidence_visible=visible, source=read["source"], replay_of=read.get("replay_of"),
                    notes=read.get("notes"), notes_saved_at=read.get("notes_saved_at"), feature_reviews=reviews,
-                   signout_missing=signout_missing(store, con, read, case) if read["source"] == "live" else [])
+                   signout_missing=signout_missing(store, con, read, case) if read["source"] == "live" else [],
+                   signed_out_at=read.get("signed_out_at"), resumed=resumed,
+                   next_seq=0 if ev["s"] is None else int(ev["s"]) + 1, last_t_ms=float(ev["t"] or 0.0))
 
 
 @router.post("/reads", response_model=ReadOut)
@@ -104,6 +107,14 @@ def create_read(body: ReadCreate, store: Store = Depends(get_store)):
         case = case_row(con, body.case_id)
         if case["status"] != "ok":
             raise HTTPException(409, f"slide unavailable: {case['status_detail']}")
+        if body.resume:
+            prev = db.one(con, "SELECT * FROM reads WHERE case_id=? AND reader_id=? AND source='live' "
+                               "ORDER BY started_at DESC LIMIT 1", body.case_id, body.reader_id)
+            if prev is not None:
+                audit(con, "case_resumed", read_id=prev["read_id"], case_id=body.case_id, session_id=body.session_id,
+                      ai_visible=evidence_gate(case, prev)[0], review_order=prev["review_mode"])
+                con.commit()
+                return read_out(store, con, prev, resumed=True)
         mode = "blind" if requires_blind(case, body.blind_all) else "aided"
         rid = new_id("read")
         db.upsert(con, "readers", {"reader_id": body.reader_id, "dataset": "live", "experience_level": None})
@@ -233,6 +244,28 @@ def post_decision(read_id: str, body: DecisionIn, store: Store = Depends(get_sto
         con.close()
 
 
+def add_version(con, read_id: str, feature_id: str, text: str | None, verdict: str | None = None) -> None:
+    """Append a version unless it is identical to the latest one (re-saving unchanged text adds nothing)."""
+    last = db.one(con, "SELECT version, verdict, text FROM note_versions WHERE read_id=? AND feature_id=? "
+                       "ORDER BY version DESC LIMIT 1", read_id, feature_id)
+    if last is not None and last["text"] == text and last["verdict"] == verdict:
+        return
+    con.execute("INSERT INTO note_versions (read_id, feature_id, version, verdict, text, saved_at) VALUES (?,?,?,?,?,?)",
+                (read_id, feature_id, 1 if last is None else last["version"] + 1, verdict, text, db.now()))
+
+
+@router.get("/reads/{read_id}/history", response_model=list[NoteVersion])
+def note_history(read_id: str, feature_id: str = "", store: Store = Depends(get_store)):
+    """Every saved version of the case notes (feature_id empty) or of one feature's verdict + note, newest first."""
+    con = store.con()
+    try:
+        read_row(con, read_id)
+        return db.all_(con, "SELECT feature_id, version, verdict, text, saved_at FROM note_versions "
+                            "WHERE read_id=? AND feature_id=? ORDER BY version DESC", read_id, feature_id)
+    finally:
+        con.close()
+
+
 def log_unlock(con, case: dict, before: dict, after: dict) -> None:
     """Audit the moment a blind read's AI evidence becomes visible (notes + assessment saved)."""
     if not evidence_gate(case, before)[0] and evidence_gate(case, after)[0]:
@@ -251,6 +284,7 @@ def put_notes(read_id: str, body: NotesIn, store: Store = Depends(get_store)):
         ai_visible, _ = evidence_gate(case, read)
         con.execute("UPDATE reads SET notes=?, notes_saved_at=COALESCE(notes_saved_at, ?) WHERE read_id=?",
                     (body.notes, db.now(), read_id))
+        add_version(con, read_id, "", body.notes)
         audit(con, "notes_saved", read_id=read_id, case_id=read["case_id"], session_id=body.session_id,
               ai_visible=ai_visible, review_order=read["review_mode"],
               detail={"chars": len(body.notes), "first_save": read["notes_saved_at"] is None})
@@ -274,6 +308,7 @@ def put_feature_review(read_id: str, feature_id: str, body: FeatureReviewIn, sto
         note = (body.note or "").strip() or None
         con.execute("INSERT OR REPLACE INTO feature_reviews (read_id, feature_id, verdict, note, updated_at) "
                     "VALUES (?,?,?,?,?)", (read_id, feature_id, body.verdict, note, db.now()))
+        add_version(con, read_id, feature_id, note, body.verdict)
         audit(con, "feature_reviewed", read_id=read_id, case_id=read["case_id"], session_id=body.session_id,
               ai_visible=True, review_order=read["review_mode"],
               detail={"feature": feature_id, "verdict": body.verdict, "has_note": note is not None})

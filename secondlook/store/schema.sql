@@ -78,6 +78,18 @@ CREATE TABLE IF NOT EXISTS feature_reviews (
     PRIMARY KEY (read_id, feature_id)
 );
 
+-- Every saved version of the reader's notes (feature_id '' = the main case notes) and of
+-- each feature verdict + note. Append-only: edits add a row, nothing is overwritten.
+CREATE TABLE IF NOT EXISTS note_versions (
+    read_id    TEXT NOT NULL REFERENCES reads(read_id),
+    feature_id TEXT NOT NULL DEFAULT '',
+    version    INTEGER NOT NULL,
+    verdict    TEXT,
+    text       TEXT,
+    saved_at   TEXT NOT NULL,
+    PRIMARY KEY (read_id, feature_id, version)
+);
+
 CREATE TABLE IF NOT EXISTS patches (
     patch_id  TEXT PRIMARY KEY,
     slide_id  TEXT NOT NULL,

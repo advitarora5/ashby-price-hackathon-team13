@@ -98,6 +98,18 @@ export interface Read {
   notes_saved_at: string | null
   feature_reviews: FeatureReview[]
   signout_missing: string[]
+  signed_out_at: string | null
+  next_seq: number
+  last_t_ms: number
+  resumed: boolean
+}
+
+export interface NoteVersion {
+  feature_id: string
+  version: number
+  verdict: Verdict | null
+  text: string | null
+  saved_at: string
 }
 
 export interface FeatureReview {

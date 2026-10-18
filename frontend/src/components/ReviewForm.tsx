@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { Decision, Read } from '../types'
+import { api } from '../api'
+import type { Decision, NoteVersion, Read } from '../types'
 
 interface Props {
   read: Read
@@ -12,12 +13,20 @@ interface Props {
 }
 
 const DECISIONS: Decision[] = ['benign', 'suspicious', 'malignant']
+const when = (iso: string) => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 
 export default function ReviewForm({ read, evidenceHidden, signedOutOnce, onSaveNotes, onReveal, onDecide, onSignOut }: Props) {
   const [draft, setDraft] = useState(read.notes ?? '')
   const [pending, setPending] = useState<Decision | null>(read.initial_decision)
   const [busy, setBusy] = useState(false)
-  useEffect(() => { setDraft(read.notes ?? ''); setPending(read.initial_decision) }, [read.read_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [history, setHistory] = useState<NoteVersion[] | null>(null)
+  useEffect(() => { setDraft(read.notes ?? ''); setPending(read.initial_decision); setHistory(null) }, [read.read_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  // keep an open history list current after each save
+  useEffect(() => { if (history) api.history(read.read_id).then(setHistory).catch(() => undefined) }, [read.notes]) // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleHistory = () => {
+    if (history) setHistory(null)
+    else api.history(read.read_id).then(setHistory).catch(() => setHistory([]))
+  }
 
   const dirty = draft !== (read.notes ?? '')
   const hasText = draft.trim().length > 0
@@ -30,8 +39,24 @@ export default function ReviewForm({ read, evidenceHidden, signedOutOnce, onSave
     <div className="review">
       <div className="review-head">
         <b>Your notes</b>
+        {read.signed_out_at && <span className="small muted">signed out {when(read.signed_out_at)} · edits are kept as new versions</span>}
+        <span className="spacer" />
+        {read.notes_saved_at && (
+          <button className="link small" onClick={toggleHistory}>{history ? 'hide history' : 'version history'}</button>
+        )}
         <span className={`small ${status === 'saved' ? 'muted' : 'warn-text'}`}>{status}</span>
       </div>
+      {history && (
+        <ol className="history">
+          {history.length === 0 && <li className="small muted">No saved versions yet.</li>}
+          {history.map((h, i) => (
+            <li key={h.version}>
+              <div className="small muted">v{h.version} · {when(h.saved_at)}{i === 0 ? ' · current' : ''}</div>
+              <div className="history-text">{h.text}</div>
+            </li>
+          ))}
+        </ol>
+      )}
       <textarea className="notes" rows={4} value={draft} onChange={(e) => setDraft(e.target.value)}
         placeholder={evidenceHidden ? 'Describe what you see before the AI evidence is shown…' : 'Full notes for this case…'} />
       <div className="decision-bar">

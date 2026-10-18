@@ -185,3 +185,32 @@ def test_replay_style_signout_does_not_touch_case_status(client):
     con.close()
     assert c.post("/api/reads/rp1/signout", json={"decision": "benign"}).status_code == 200
     assert {r["case_id"]: r["review_status"] for r in c.get("/api/cases").json()}[CASE] == "unread"
+
+
+def test_reopening_a_case_resumes_the_read_and_keeps_every_notes_version(client):
+    c, _, _ = client
+    r = c.post("/api/reads", json={"case_id": CASE}).json()
+    rid = r["read_id"]
+    assert not r["resumed"] and r["next_seq"] == 0
+    c.post(f"/api/reads/{rid}/events", json={"events": [{"seq": 0, "t_ms": 0, "x": 0, "y": 0, "w": 900, "h": 900, "zoom": 0.3},
+                                                         {"seq": 1, "t_ms": 2500, "x": 0, "y": 0, "w": 900, "h": 900, "zoom": 0.3}]})
+    c.put(f"/api/reads/{rid}/notes", json={"notes": "v1"})
+    c.put(f"/api/reads/{rid}/notes", json={"notes": "v1"})          # unchanged: no new version
+    c.put(f"/api/reads/{rid}/notes", json={"notes": "v2, edited"})
+    again = c.post("/api/reads", json={"case_id": CASE}).json()    # navigate away and come back
+    assert again["read_id"] == rid and again["resumed"] and again["notes"] == "v2, edited"
+    assert again["next_seq"] == 2 and again["last_t_ms"] == 2500    # new view events continue, not dropped as duplicates
+    hist = c.get(f"/api/reads/{rid}/history").json()
+    assert [(h["version"], h["text"]) for h in hist] == [(2, "v2, edited"), (1, "v1")]
+    c.post(f"/api/reads/{rid}/decision", json={"stage": "initial", "decision": "benign"})
+    c.put(f"/api/reads/{rid}/features/metastasis", json={"verdict": "agree"})
+    c.put(f"/api/reads/{rid}/features/metastasis", json={"verdict": "disagree", "note": "on second look"})
+    fh = c.get(f"/api/reads/{rid}/history", params={"feature_id": "metastasis"}).json()
+    assert [(h["verdict"], h["text"]) for h in fh] == [("disagree", "on second look"), ("agree", None)]
+    # editing after sign-out still works and is versioned
+    c.put(f"/api/reads/{rid}/features/irregular_nuclei", json={"verdict": "unsure"})
+    assert c.post(f"/api/reads/{rid}/signout", json={"decision": "benign"}).status_code == 200
+    c.put(f"/api/reads/{rid}/notes", json={"notes": "v3, after sign-out"})
+    assert len(c.get(f"/api/reads/{rid}/history").json()) == 3
+    assert c.post("/api/reads", json={"case_id": CASE, "resume": False}).json()["read_id"] != rid
+    assert "case_resumed" in [e["action"] for e in c.get("/api/audit", params={"read_id": rid}).json()]

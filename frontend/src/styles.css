@@ -158,7 +158,11 @@ tr.hl td { background: var(--accent-soft); }
 .seg-btn.on.v-unsure { background: #fef3c7; color: var(--warn); }
 .verdict-note { min-width: 0; font: inherit; font-size: 11px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 5px; }
 .review { background: var(--panel); border-top: 1px solid var(--line); }
-.review-head { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 12px 0; }
+.review-head { display: flex; gap: 10px; align-items: baseline; padding: 6px 12px 0; }
+.review-head .spacer { flex: 1; }
+.history { margin: 4px 12px 0; padding: 6px 8px 6px 24px; max-height: 22vh; overflow-y: auto; background: #f9fafb; border: 1px solid var(--line); border-radius: 6px; }
+.history li + li { margin-top: 6px; }
+.history-text { font-size: 13px; white-space: pre-wrap; }
 .notes { display: block; width: calc(100% - 24px); margin: 4px 12px 0; font: inherit; font-size: 13px; padding: 6px 8px;
   border: 1px solid var(--line); border-radius: 6px; resize: vertical; min-height: 64px; max-height: 40vh; }
 .notes:focus, .verdict-note:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }

@@ -102,8 +102,15 @@ export default function App() {
       const d = await api.case(id)
       setDetail(d)
       const r = await api.createRead(id, blindAll)
+      // a reopened case continues its earlier read: keep numbering view events after the stored ones
+      seq.current = r.next_seq
+      t0.current = performance.now() - r.last_t_ms
       setRead(r)
       await loadEvidence(id, r)
+      if (r.resumed) {
+        api.coverage(r.read_id).then((c) => { liveCoverage.current = c; setCoverage(c) }).catch(() => undefined)
+        if (r.initial_decision) api.policy(r.read_id).then(setRec).catch(() => undefined)
+      }
       refreshCases()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e))

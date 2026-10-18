@@ -1,5 +1,5 @@
 import type {
-  CaseDetail, CaseRow, Coverage, Decision, Evidence, PolicyRec, PolicySummary, Read, RecordedRead,
+  CaseDetail, CaseRow, Coverage, Decision, Evidence, NoteVersion, PolicyRec, PolicySummary, Read, RecordedRead,
   Regions, ReplayStep, Signout, Verdict, ViewEvent,
 } from './types'
 
@@ -55,6 +55,7 @@ export const api = {
   decision: (id: string, stage: string, decision: Decision) =>
     post<Read>(`/reads/${id}/decision`, { stage, decision, session_id: SESSION_ID }),
   saveNotes: (id: string, notes: string) => put<Read>(`/reads/${id}/notes`, { notes, session_id: SESSION_ID }),
+  history: (id: string, feature_id = '') => req<NoteVersion[]>(`/reads/${id}/history${q({ feature_id })}`),
   reviewFeature: (id: string, feature: string, verdict: Verdict, note: string) =>
     put<Read>(`/reads/${id}/features/${feature}`, { verdict, note, session_id: SESSION_ID }),
   signout: (id: string, decision: Decision) =>
