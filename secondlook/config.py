@@ -154,6 +154,7 @@ DEFAULT_COVERAGE = CoverageParams()
 DISAGREEMENT_RECIPE = "disagreement_v1"  # frozen before evaluation; see pipeline/disagreement.py
 CASE_SCORE_PERCENTILE = 90.0             # case score = 90th percentile of tile disagreement
 SLOW_PATH_SHARE = 0.15                    # fallback when no validation-derived cutoff exists
+ARTIFACT_SLOW_SHARE = 0.10                # blur/ink/fold on >= this share of tissue tiles -> slow path too
 
 # ---- Policy -----------------------------------------------------------------------------
 NONINFERIORITY_MARGIN = 0.02

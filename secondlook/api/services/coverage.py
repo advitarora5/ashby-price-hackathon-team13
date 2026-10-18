@@ -11,10 +11,12 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
-from secondlook.api.schemas import (CoverageOut, DecisionIn, EventsIn, ReadCreate, ReadOut, SignoutIn, SignoutOut)
+from secondlook.api.schemas import (CoverageOut, DecisionIn, EventsIn, FeatureReviewIn, NotesIn, ReadCreate, ReadOut,
+                                    SignoutIn, SignoutOut)
 from secondlook.api.services.common import (audit, case_row, evidence_gate, exemplar_payload, load_slide, read_row,
                                             requires_blind)
-from secondlook.api.store import SlideData, Store, get_store
+from secondlook.api.services.evidence import feature_ids
+from secondlook.api.store import SlideData, Store, Unavailable, get_store
 from secondlook.config import DEFAULT_COVERAGE, CoverageParams
 from secondlook.core import coverage as cov
 from secondlook.core.signout import load_light_thresholds, unseen_check
@@ -60,13 +62,39 @@ def coverage_out(read: dict, sd: SlideData, c: cov.Coverage, n: int, revisited=(
                        overlay_url=f"/api/reads/{read['read_id']}/coverage.png", revisited_alerts=list(revisited))
 
 
-def read_out(con, read: dict) -> ReadOut:
+def signout_missing(store: Store, con, read: dict, case: dict) -> list[str]:
+    """What a live reader still has to record before sign-out: their notes, an assessment,
+    and (once the AI is visible) a verdict on every feature bar of this slide."""
+    missing = []
+    if not (read.get("notes") or "").strip():
+        missing.append("notes")
+    if not read.get("initial_decision"):
+        missing.append("assessment")
+    visible, _ = evidence_gate(case, read)
+    if visible:
+        try:
+            ids = feature_ids(store.slide(read["slide_id"]))
+        except Unavailable:
+            ids = []
+        done = {r["feature_id"] for r in db.all_(con, "SELECT feature_id FROM feature_reviews WHERE read_id=?",
+                                                 read["read_id"])}
+        left = [f for f in ids if f not in done]
+        if left:
+            missing.append(f"feature verdicts ({len(left)} of {len(ids)} left)")
+    return missing
+
+
+def read_out(store: Store, con, read: dict) -> ReadOut:
     case = case_row(con, read["case_id"])
     visible, _ = evidence_gate(case, read)
+    reviews = db.all_(con, "SELECT feature_id, verdict, note FROM feature_reviews WHERE read_id=? ORDER BY feature_id",
+                      read["read_id"])
     return ReadOut(read_id=read["read_id"], case_id=read["case_id"], review_mode=read["review_mode"] or "aided",
                    coverage_mode=read["coverage_mode"] or "viewport", tier=case.get("tier") or "unavailable",
                    initial_decision=read["initial_decision"], final_decision=read["final_decision"],
-                   evidence_visible=visible, source=read["source"], replay_of=read.get("replay_of"))
+                   evidence_visible=visible, source=read["source"], replay_of=read.get("replay_of"),
+                   notes=read.get("notes"), notes_saved_at=read.get("notes_saved_at"), feature_reviews=reviews,
+                   signout_missing=signout_missing(store, con, read, case) if read["source"] == "live" else [])
 
 
 @router.post("/reads", response_model=ReadOut)
@@ -87,7 +115,7 @@ def create_read(body: ReadCreate, store: Store = Depends(get_store)):
               ai_visible=(mode == "aided"), review_order=mode,
               detail={"tier": case.get("tier"), "blind_all": body.blind_all})
         con.commit()
-        return read_out(con, read_row(con, rid))
+        return read_out(store, con, read_row(con, rid))
     finally:
         con.close()
 
@@ -96,7 +124,7 @@ def create_read(body: ReadCreate, store: Store = Depends(get_store)):
 def get_read(read_id: str, store: Store = Depends(get_store)):
     con = store.con()
     try:
-        return read_out(con, read_row(con, read_id))
+        return read_out(store, con, read_row(con, read_id))
     finally:
         con.close()
 
@@ -187,9 +215,7 @@ def post_decision(read_id: str, body: DecisionIn, store: Store = Depends(get_sto
             action = "blind_assessment" if not ai_visible else "initial_assessment"
             audit(con, action, read_id=read_id, case_id=read["case_id"], session_id=body.session_id,
                   ai_visible=ai_visible, review_order=read["review_mode"], decision_after=body.decision)
-            if not ai_visible:
-                audit(con, "evidence_unlocked", read_id=read_id, case_id=read["case_id"], ai_visible=True,
-                      review_order=read["review_mode"])
+            log_unlock(con, case, read, read_row(con, read_id))
         elif body.stage == "final":
             before = read["initial_decision"]
             override = before is not None and before != body.decision
@@ -202,7 +228,57 @@ def post_decision(read_id: str, body: DecisionIn, store: Store = Depends(get_sto
             con.execute(f"UPDATE reads SET {col}=? WHERE read_id=?", (body.decision, read_id))
             audit(con, body.stage, read_id=read_id, case_id=read["case_id"], decision_after=body.decision)
         con.commit()
-        return read_out(con, read_row(con, read_id))
+        return read_out(store, con, read_row(con, read_id))
+    finally:
+        con.close()
+
+
+def log_unlock(con, case: dict, before: dict, after: dict) -> None:
+    """Audit the moment a blind read's AI evidence becomes visible (notes + assessment saved)."""
+    if not evidence_gate(case, before)[0] and evidence_gate(case, after)[0]:
+        audit(con, "evidence_unlocked", read_id=after["read_id"], case_id=after["case_id"], ai_visible=True,
+              review_order=after["review_mode"])
+
+
+@router.put("/reads/{read_id}/notes", response_model=ReadOut)
+def put_notes(read_id: str, body: NotesIn, store: Store = Depends(get_store)):
+    if not body.notes.strip():
+        raise HTTPException(422, "notes are empty")
+    con = store.con()
+    try:
+        read = read_row(con, read_id)
+        case = case_row(con, read["case_id"])
+        ai_visible, _ = evidence_gate(case, read)
+        con.execute("UPDATE reads SET notes=?, notes_saved_at=COALESCE(notes_saved_at, ?) WHERE read_id=?",
+                    (body.notes, db.now(), read_id))
+        audit(con, "notes_saved", read_id=read_id, case_id=read["case_id"], session_id=body.session_id,
+              ai_visible=ai_visible, review_order=read["review_mode"],
+              detail={"chars": len(body.notes), "first_save": read["notes_saved_at"] is None})
+        log_unlock(con, case, read, read_row(con, read_id))
+        con.commit()
+        return read_out(store, con, read_row(con, read_id))
+    finally:
+        con.close()
+
+
+@router.put("/reads/{read_id}/features/{feature_id}", response_model=ReadOut)
+def put_feature_review(read_id: str, feature_id: str, body: FeatureReviewIn, store: Store = Depends(get_store)):
+    con = store.con()
+    try:
+        read = read_row(con, read_id)
+        case = case_row(con, read["case_id"])
+        if not evidence_gate(case, read)[0]:
+            raise HTTPException(403, "AI evidence is still hidden on this read")
+        if feature_id not in feature_ids(load_slide(store, read["slide_id"])):
+            raise HTTPException(404, f"feature {feature_id} has no bar on this slide")
+        note = (body.note or "").strip() or None
+        con.execute("INSERT OR REPLACE INTO feature_reviews (read_id, feature_id, verdict, note, updated_at) "
+                    "VALUES (?,?,?,?,?)", (read_id, feature_id, body.verdict, note, db.now()))
+        audit(con, "feature_reviewed", read_id=read_id, case_id=read["case_id"], session_id=body.session_id,
+              ai_visible=True, review_order=read["review_mode"],
+              detail={"feature": feature_id, "verdict": body.verdict, "has_note": note is not None})
+        con.commit()
+        return read_out(store, con, read_row(con, read_id))
     finally:
         con.close()
 
@@ -277,6 +353,11 @@ def run_signout(store: Store, con, read: dict, decision: str, max_regions: int =
 def signout(read_id: str, body: SignoutIn, store: Store = Depends(get_store)):
     con = store.con()
     try:
-        return run_signout(store, con, read_row(con, read_id), body.decision, body.max_regions, body.session_id)
+        read = read_row(con, read_id)
+        if read["source"] == "live":  # replays of recorded reads have no notes to require
+            missing = signout_missing(store, con, read, case_row(con, read["case_id"]))
+            if missing:
+                raise HTTPException(409, f"before sign-out, record: {', '.join(missing)}")
+        return run_signout(store, con, read, body.decision, body.max_regions, body.session_id)
     finally:
         con.close()

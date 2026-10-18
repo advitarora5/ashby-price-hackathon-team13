@@ -5,11 +5,12 @@ import EvalView from './components/EvalView'
 import EvidencePanel from './components/EvidencePanel'
 import PolicyPanel from './components/PolicyPanel'
 import ReplayPanel from './components/ReplayPanel'
+import ReviewForm from './components/ReviewForm'
 import SlideViewer, { type LayerSpec, type ViewportReport } from './components/SlideViewer'
 import UnseenPanel from './components/UnseenPanel'
 import type {
   CaseDetail, CaseRow, Coverage, Decision, Evidence, PolicyRec, PolicySummary, Read, Rect, Region,
-  ReplayStep, Signout, ViewEvent,
+  ReplayStep, Signout, Verdict, ViewEvent,
 } from './types'
 import './styles.css'
 
@@ -138,6 +139,35 @@ export default function App() {
     } catch (e) { setError((e as Error).message) }
   }
 
+  const saveNotes = async (text: string) => {
+    if (!read || !selected) return
+    try {
+      const r = await api.saveNotes(read.read_id, text)
+      setRead(r)
+      if (ev?.hidden && r.evidence_visible) await loadEvidence(selected, r)
+    } catch (e) { setError((e as Error).message) }
+  }
+
+  // blind read: save the reader's notes and assessment, which together unlock the AI evidence
+  const reveal = async (text: string, d: Decision) => {
+    if (!read || !selected) return
+    try {
+      let r = read
+      if (!r.notes_saved_at || text !== (r.notes ?? '')) r = await api.saveNotes(r.read_id, text)
+      if (r.initial_decision !== d) r = await api.decision(r.read_id, 'initial', d)
+      setRead(r)
+      if (r.evidence_visible) {
+        await loadEvidence(selected, r)
+        setRec(await api.policy(r.read_id))
+      }
+    } catch (e) { setError((e as Error).message) }
+  }
+
+  const reviewFeature = async (feature: string, verdict: Verdict, note: string) => {
+    if (!read) return
+    try { setRead(await api.reviewFeature(read.read_id, feature, verdict, note)) } catch (e) { setError((e as Error).message) }
+  }
+
   const doSignout = async (r: Read, d: Decision) => {
     await flush()
     const s = await api.signout(r.read_id, d)
@@ -206,8 +236,6 @@ export default function App() {
     return out
   }, [evRegions, disputed, signout, ev, evidenceVisible, layers, replay.active])
 
-  const decision = read?.final_decision ?? read?.initial_decision ?? null
-
   return (
     <div className="app">
       <header className="top">
@@ -231,6 +259,7 @@ export default function App() {
                 <div className="toolbar">
                   <b>{detail.slide_id}</b>
                   <span className={`chip tier-${detail.tier}`}>{detail.tier} path</span>
+                  {detail.tier_reasons.includes('artifacts') && <span className="chip art">damaged tissue</span>}
                   {read && <span className="chip">{read.review_mode === 'blind' ? 'blind-first' : 'evidence-first'}</span>}
                   {replay.active && <span className="chip replay">replaying recorded read</span>}
                   <span className="spacer" />
@@ -255,29 +284,8 @@ export default function App() {
                   )}
                 </div>
                 {!replay.active && read && (
-                  <div className="decision-bar">
-                    {!read.initial_decision ? (
-                      <>
-                        <span>{read.review_mode === 'blind' ? 'Record your own assessment first (AI evidence hidden):' : 'Your assessment:'}</span>
-                        {(['benign', 'suspicious', 'malignant'] as Decision[]).map((d) => (
-                          <button key={d} className={`btn dec-${d}`} onClick={() => decide('initial', d)}>{d}</button>
-                        ))}
-                      </>
-                    ) : (
-                      <>
-                        <span>Assessment: <b>{decision}</b>{read.final_decision && read.initial_decision !== read.final_decision ? ` (changed from ${read.initial_decision})` : ''}</span>
-                        <button className="btn primary" onClick={signOut}>{signout ? 'Re-run sign-out check' : `Sign out as ${decision}`}</button>
-                        {signout && (
-                          <span className="final">
-                            <span className="small muted">after re-inspection:</span>
-                            {(['benign', 'suspicious', 'malignant'] as Decision[]).map((d) => (
-                              <button key={d} className={`btn small dec-${d}`} onClick={() => decide('final', d)}>confirm {d}</button>
-                            ))}
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
+                  <ReviewForm read={read} evidenceHidden={!read.evidence_visible} signedOutOnce={!!signout}
+                    onSaveNotes={saveNotes} onReveal={reveal} onDecide={decide} onSignOut={signOut} />
                 )}
               </>
             )}
@@ -285,7 +293,9 @@ export default function App() {
           <aside className="side">
             {detail && (
               <>
-                <EvidencePanel ev={replay.active ? null : ev} loading={evLoading} evidenceRegions={evRegions} disputed={disputed} onJump={jump} />
+                <EvidencePanel ev={replay.active ? null : ev} loading={evLoading} evidenceRegions={evRegions} disputed={disputed} onJump={jump}
+                  reviews={read && read.source === 'live' && read.evidence_visible ? read.feature_reviews : null}
+                  reviewKey={read?.read_id ?? ''} onReview={reviewFeature} />
                 <UnseenPanel coverage={coverage} signout={signout} onJump={jump} activeAlert={activeAlert} />
                 <PolicyPanel rec={replay.active ? null : rec} summary={summary} tierSlow={detail.tier === 'slow'} onSecondRead={secondRead} />
                 <ReplayPanel caseId={detail.case_id} onStep={onReplayStep} onStart={onReplayStart} onStop={onReplayStop} />

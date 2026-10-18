@@ -26,6 +26,8 @@ class CaseRow(BaseModel):
     tier: str
     tier_rule: Optional[str]
     artifact_share: Optional[float]
+    tissue_artifact_share: Optional[float] = None
+    tier_reasons: list[str] = []
     review_status: str
     recorded_reads: int = 0
 
@@ -137,6 +139,30 @@ class ReadOut(BaseModel):
     evidence_visible: bool
     source: str = "live"
     replay_of: Optional[str] = None
+    notes: Optional[str] = None
+    notes_saved_at: Optional[str] = None
+    feature_reviews: list["FeatureReviewOut"] = []
+    signout_missing: list[str] = Field([], description="what the reader still has to record before sign-out")
+
+
+class NotesIn(BaseModel):
+    notes: str
+    session_id: Optional[str] = None
+
+
+class FeatureReviewIn(BaseModel):
+    verdict: Literal["agree", "disagree", "unsure"]
+    note: Optional[str] = None
+    session_id: Optional[str] = None
+
+
+class FeatureReviewOut(BaseModel):
+    feature_id: str
+    verdict: Literal["agree", "disagree", "unsure"]
+    note: Optional[str] = None
+
+
+ReadOut.model_rebuild()
 
 
 class ViewEvent(BaseModel):
