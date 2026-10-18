@@ -1,5 +1,5 @@
 import type {
-  CaseDetail, CaseRow, Coverage, Decision, Evidence, PolicyRec, PolicySummary, Read, RecordedRead,
+  AuditEvent, CaseDetail, CaseRow, EvalDoc, Health, Coverage, Decision, Evidence, PolicyRec, PolicySummary, Read, RecordedRead,
   Regions, ReplayStep, Signout, ViewEvent,
 } from './types'
 
@@ -37,7 +37,7 @@ const q = (o: Record<string, string | number | null | undefined>) => {
 export const SESSION_ID = `sess_${Math.random().toString(36).slice(2, 10)}`
 
 export const api = {
-  health: () => req<{ ok: boolean; cases: number; provenance: string; thresholds: Record<string, unknown> }>('/health'),
+  health: () => req<Health>('/health'),
   cases: () => req<CaseRow[]>('/cases'),
   case: (id: string) => req<CaseDetail>(`/cases/${id}`),
   evidence: (caseId: string, p: { read_id?: string; tile?: string; x?: number; y?: number }) =>
@@ -65,5 +65,7 @@ export const api = {
       { source_read_id, coverage_mode }),
   replayStep: (id: string, n: number) => post<ReplayStep>(`/replay/${id}/step${q({ n })}`),
   replayTally: () => req<Record<string, unknown>>('/replay/tally'),
-  evalSummary: () => req<Record<string, unknown>>('/eval/summary'),
+  evalSummary: () => req<Record<string, EvalDoc>>('/eval/summary'),
+  /** Existing GET /api/audit (ascending by event id); used read-only to derive last activity per case. */
+  auditEvents: (limit = 20000) => req<AuditEvent[]>(`/audit${q({ limit })}`),
 }

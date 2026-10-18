@@ -1,47 +1,54 @@
+import { TriangleAlert } from 'lucide-react'
 import type { CaseRow } from '../types'
+import { href } from '../lib/router'
+import { ARTIFACT_FLAG, REVIEW_STATUS, TIER, routingScore, statusOf } from '../lib/status'
+import { pct, score } from '../lib/format'
 
 interface Props { cases: CaseRow[]; selected: string | null; onSelect: (id: string) => void; error: string | null }
 
-const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}`)
-
+/** Compact case list docked left of the viewer. The routing signal is the primary number; disagreement is secondary. */
 export default function CaseQueue({ cases, selected, onSelect, error }: Props) {
+  const entropy = cases[0]?.routing_signal === 'entropy'
   return (
-    <aside className="queue">
-      <div className="panel-head">
-        <h2>Case queue</h2>
-        <span className="muted small">sorted by {cases[0]?.routing_signal === 'entropy' ? 'model uncertainty' : 'model disagreement'}</span>
+    <div className="queue">
+      <div className="queue-head">
+        <h2>Cases <span className="muted num">{cases.length}</span></h2>
+        <span className="muted xs">by {entropy ? 'model uncertainty' : 'model disagreement'}</span>
       </div>
-      {error && <div className="notice warn">{error}</div>}
+      {error && <div className="notice warn"><TriangleAlert size={14} aria-hidden />{error}</div>}
       {!error && cases.length === 0 && <div className="notice">No cases in the bundle yet. Run the pipeline (see README).</div>}
-      <ul>
-        {cases.map((c) => (
-          <li key={c.case_id}>
-            <button className={`case ${selected === c.case_id ? 'sel' : ''}`} onClick={() => onSelect(c.case_id)}>
-              <div className="case-top">
-                <span className="case-id">{c.slide_id}</span>
-                <span className={`chip tier-${c.tier}`}>{c.tier === 'unavailable' ? 'no tier' : `${c.tier} path`}</span>
-              </div>
-              <div className="case-meta">
-                <span>{c.organ.replace('_', ' ')}</span>
-                <span className={`status st-${c.review_status}`}>{c.review_status.replace('_', ' ')}</span>
-              </div>
-              <div className="dis" title={c.disagreement_source ?? 'disagreement unavailable'}>
-                <div className="dis-track"><div className="dis-fill" style={{ width: `${(c.disagreement_score ?? 0) * 100}%` }} /></div>
-                <span className="small muted">disagreement {pct(c.disagreement_score)}{c.routing_signal === 'entropy' ? ` · uncertainty ${pct(c.uncertainty_score)}` : ''}</span>
-              </div>
-              {c.artifact_share !== null && c.artifact_share > 0.05 && (
-                <div className="small warn-text">artifacts on {pct(c.artifact_share)}% of tiles</div>
-              )}
-            </button>
-          </li>
-        ))}
+      <ul className="queue-list">
+        {cases.map((c) => {
+          const st = statusOf(REVIEW_STATUS, c.review_status)
+          const tier = statusOf(TIER, c.tier)
+          const StIcon = st.icon
+          const TierIcon = tier.icon
+          const routing = routingScore(c)
+          return (
+            <li key={c.case_id}>
+              <a href={href({ page: 'review', caseId: c.case_id })} className={`queue-item ${selected === c.case_id ? 'is-selected' : ''}`}
+                aria-current={selected === c.case_id ? 'true' : undefined}
+                onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); onSelect(c.case_id) }}>
+                <span className="qi-row">
+                  <span className="mono strong">{c.slide_id}</span>
+                  <span className={`qi-tier tone-${tier.tone}`}><TierIcon size={12} aria-hidden />{tier.label}</span>
+                </span>
+                <span className="qi-row qi-meta">
+                  <span className={`qi-status tone-${st.tone}`}><StIcon size={12} aria-hidden />{st.label}</span>
+                  <span className="num" title={entropy ? 'Model uncertainty (routing signal), relative 0–1' : 'Model disagreement, relative 0–1'}>
+                    {entropy ? 'Unc.' : 'Dis.'} {score(routing)}
+                  </span>
+                </span>
+                <span className="qi-bar" aria-hidden><span style={{ width: `${(routing ?? 0) * 100}%` }} /></span>
+                {entropy && <span className="qi-row qi-sub num">Disagreement {score(c.disagreement_score)}</span>}
+                {c.artifact_share !== null && c.artifact_share > ARTIFACT_FLAG && (
+                  <span className="qi-row qi-sub warn-text"><span><TriangleAlert size={12} aria-hidden /> Artifacts on {pct(c.artifact_share)} of tiles</span></span>
+                )}
+              </a>
+            </li>
+          )
+        })}
       </ul>
-      {cases[0]?.routing_signal === 'entropy' && (
-        <p className="foot muted small">Model disagreement did not beat single-model uncertainty in evaluation, so tiers use uncertainty (disagreement still shown).</p>
-      )}
-      {cases.some((c) => c.tier_rule === 'rank_top15') && (
-        <p className="foot muted small">Tier cut-off: top 15% by rank (no validation-derived cut-off yet).</p>
-      )}
-    </aside>
+    </div>
   )
 }

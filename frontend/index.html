@@ -2,12 +2,29 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SecondLook</title>
+    <meta name="description" content="%BRAND_NAME% · %BRAND_DESCRIPTOR%. Research use only." />
+    <meta name="theme-color" content="#f6f8fa" />
+    <title>%BRAND_NAME%</title>
+    <style>
+      /* app-shell boot state, replaced as soon as React mounts */
+      html, body, #root { height: 100%; margin: 0; background: #f6f8fa; }
+      .boot { height: 100%; display: grid; place-items: center; color: #5b6b7c; font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .boot-inner { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+      .boot-name { color: #20364a; font-weight: 600; font-size: 16px; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot" role="status" aria-live="polite">
+        <div class="boot-inner">
+          <img src="/favicon.svg" width="36" height="36" alt="" />
+          <span class="boot-name">%BRAND_NAME%</span>
+          <span>Loading workstation…</span>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
