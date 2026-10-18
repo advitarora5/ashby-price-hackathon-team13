@@ -32,6 +32,8 @@ interface Props {
   onClickPoint?: (x: number, y: number) => void
   onBoxClick?: (r: Region) => void
   onStatus?: (s: ViewerStatus) => void
+  /** Jumps land at no less than this objective-equivalent magnification (the coverage counting threshold). */
+  minMag?: number
   controls?: { current: ViewerControls | null }
 }
 
@@ -55,7 +57,7 @@ export default function SlideViewer(p: Props) {
       showNavigationControl: false,
       showNavigator: true,
       navigatorPosition: 'BOTTOM_RIGHT',
-      navigatorSizeRatio: 0.15,
+      navigatorSizeRatio: 0.12,
       navigatorAutoFade: false,
       imageSmoothingEnabled: false,
       maxZoomPixelRatio: 2,
@@ -171,16 +173,30 @@ export default function SlideViewer(p: Props) {
     else v.addOnceHandler('open', draw)
   }, [p.boxes, p.fixation, W])
 
-  // navigate to a rectangle (jump links, alerts)
+  // navigate to a rectangle (jump links, alerts), landing at >= minMag so the visit counts as viewed
   useEffect(() => {
     const v = viewer.current
     if (!v || !p.focus) return
     const { x, y, w, h } = p.focus.rect
-    const pad = Math.max(w, h) * 1.5
-    const go = () => v.viewport.fitBounds(new OpenSeadragon.Rect((x - pad) / W, (y - pad) / W, (w + 2 * pad) / W, (h + 2 * pad) / W))
+    const go = () => {
+      const pad = Math.max(w, h) * 0.6
+      let bw = w + 2 * pad
+      let bh = h + 2 * pad
+      const cw = v.container.clientWidth || 800
+      const ch = v.container.clientHeight || 600
+      const mag = cb.current.minMag
+      if (mag) {
+        // screen px per level-0 px needed for `mag`: zoom = mag * mpp / 10 (backend convention)
+        const need = (mag * 1.15 * p.detail.mpp) / 10
+        bw = Math.min(bw, cw / need)
+        bh = Math.min(bh, ch / need)
+      }
+      const cx = x + w / 2, cy = y + h / 2
+      v.viewport.fitBounds(new OpenSeadragon.Rect((cx - bw / 2) / W, (cy - bh / 2) / W, bw / W, bh / W))
+    }
     if (v.world.getItemCount() > 0) go()
     else v.addOnceHandler('open', go)
-  }, [p.focus, W])
+  }, [p.focus, W, p.detail.mpp])
 
   // replay: follow the recorded reader's viewport exactly
   useEffect(() => {

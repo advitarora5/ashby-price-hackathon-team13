@@ -42,6 +42,8 @@ export default function App() {
   })
   const [reviewCaseId, setReviewCaseId] = useState<string | null>(null)
   const [focusMode, setFocusMode] = useState(false)
+  // Slide Review gives the slide priority: the app sidebar shows as a rail there unless expanded on purpose
+  const [reviewNavExpanded, setReviewNavExpanded] = useState(false)
   const [visited, setVisited] = useState<Set<Page>>(() => new Set([route.page]))
 
   const refreshCases = useCallback(() => {
@@ -71,7 +73,13 @@ export default function App() {
   }, [route.page, reviewCaseId])
 
   const setBlind = (v: boolean) => { setBlindAll(v); store.set('claripath.blindAll', v ? '1' : '0') }
-  const toggleNav = () => setNavCollapsed((c) => { store.set('claripath.navCollapsed', c ? '0' : '1'); return !c })
+  const onReview = route.page === 'review'
+  const railNow = onReview ? !reviewNavExpanded : navCollapsed
+  const toggleNav = () => {
+    if (onReview) setReviewNavExpanded((x) => !x)
+    else setNavCollapsed((c) => { store.set('claripath.navCollapsed', c ? '0' : '1'); return !c })
+  }
+  const onCaseListOpened = useCallback(() => setReviewNavExpanded(false), [])
   const openCase = useCallback((id: string) => navigate({ page: 'review', caseId: id }), [navigate])
 
   const loading = !casesLoaded
@@ -80,9 +88,9 @@ export default function App() {
   const show = (p: Page) => route.page === p
 
   return (
-    <div className={`app-shell ${navCollapsed ? 'nav-collapsed' : ''} ${focusMode && route.page === 'review' ? 'is-focus' : ''}`}>
+    <div className={`app-shell ${railNow ? 'nav-collapsed' : ''} ${focusMode && onReview ? 'is-focus' : ''}`}>
       <a className="skip-link" href="#main">Skip to content</a>
-      <Sidebar route={route} collapsed={navCollapsed} onToggle={toggleNav} reviewCaseId={reviewCaseId} reviewSlideId={reviewSlide}
+      <Sidebar route={route} collapsed={railNow} onToggle={toggleNav} reviewCaseId={reviewCaseId} reviewSlideId={reviewSlide}
         counts={{ needsAttention: attention }} provenance={health?.provenance ?? null} blindAll={blindAll} />
       <main id="main" className="app-main" tabIndex={-1}>
         {visited.has('overview') && (
@@ -101,7 +109,7 @@ export default function App() {
           <div className="page-host" hidden={!show('review')}>
             <Suspense fallback={<div className="review-empty"><EmptyState title="Loading slide viewer…" /></div>}>
               <SlideReviewPage caseId={reviewCaseId} visible={show('review')} cases={cases} casesErr={casesErr} blindAll={blindAll}
-                evalDocs={evalDocs} onCasesChanged={refreshCases} onSelectCase={openCase} focusMode={focusMode} onFocusMode={setFocusMode} />
+                evalDocs={evalDocs} onCasesChanged={refreshCases} onSelectCase={openCase} focusMode={focusMode} onFocusMode={setFocusMode} onCaseListOpened={onCaseListOpened} />
             </Suspense>
           </div>
         )}

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Crosshair, Info, Lock, TriangleAlert } from 'lucide-react'
-import type { Evidence, FeatureBar, Rect, Region } from '../../types'
+import type { EvalDoc, Evidence, FeatureBar, Rect, Region } from '../../types'
 import { pct, score } from '../../lib/format'
+import { tumourSignalEval } from '../../lib/research'
 import Exemplars from './Exemplars'
 import InfoTip from '../ui/InfoTip'
 import { Button } from '../ui/Button'
@@ -13,6 +14,7 @@ interface Props {
   evidenceRegions: Region[]
   onJump: (r: Rect, what: string) => void
   activeTarget: string | null
+  evalDocs: Record<string, EvalDoc> | null
 }
 
 function Bar({ f, onJump }: { f: FeatureBar; onJump: Props['onJump'] }) {
@@ -34,62 +36,84 @@ function Bar({ f, onJump }: { f: FeatureBar; onJump: Props['onJump'] }) {
   )
 }
 
-/** What the AI flags and where. Calibrated evidence first; unvalidated text-prompt bars are disclosed on request. */
-export default function EvidenceTab({ ev, loading, replaying, evidenceRegions, onJump, activeTarget }: Props) {
+/**
+ * What the AI flags and where. The tumour probe (the stronger ranker in evaluation) leads; the
+ * calibrated text-prompt score is secondary and labelled as the weaker ranker. Numbers come from /api/eval.
+ */
+export default function EvidenceTab({ ev, loading, replaying, evidenceRegions, onJump, activeTarget, evalDocs }: Props) {
   const [showText, setShowText] = useState(false)
   if (replaying) return <p className="small muted">AI evidence is hidden while a recorded read is replayed.</p>
   if (loading && !ev) return <p className="small muted">Loading evidence…</p>
   if (!ev) return null
   if (ev.hidden) {
+    const why = ev.hidden_reason ? ev.hidden_reason.replace(/\.?$/, '.') : ''
     return (
       <div className="locked">
         <Lock size={18} aria-hidden />
         <div>
           <strong>AI evidence hidden until you record your assessment</strong>
-          <p className="small">{ev.hidden_reason} This keeps your first read independent of the AI.</p>
+          <p className="small">{why} This keeps your first read independent of the AI.</p>
         </div>
       </div>
     )
   }
-  const calibrated = ev.features.filter((f) => f.calibrated && f.value !== null)
+  const sig = tumourSignalEval(evalDocs)
+  const meta = ev.features.find((f) => f.id === 'metastasis' && f.calibrated && f.value !== null) ?? null
+  const otherCal = ev.features.filter((f) => f.calibrated && f.value !== null && f.id !== 'metastasis')
   const textOnly = ev.features.filter((f) => !(f.calibrated && f.value !== null))
+  const conflict = meta && ev.tumor_prob !== null && Math.abs(ev.tumor_prob - (meta.value ?? 0)) > 0.4
   return (
     <div className="tab-stack">
       {ev.notes.map((n) => <div key={n} className="notice"><Info size={14} aria-hidden />{n}</div>)}
 
       <section className="sub" aria-labelledby="ev-tile">
         <div className="sub-head">
-          <h3 id="ev-tile">Selected tile <span className="mono muted">{ev.tile_id?.split(':')[1] ?? '—'}</span></h3>
+          <h3 id="ev-tile" tabIndex={-1}>Selected tile <span className="mono muted">{ev.tile_id?.split(':')[1] ?? '—'}</span></h3>
           {ev.tile_rect && <Button size="sm" variant="ghost" icon={Crosshair} onClick={() => onJump(ev.tile_rect!, 'tile')}>Go to tile</Button>}
         </div>
         <p className="xs muted">Click anywhere on the slide to inspect another tile.</p>
-        <dl className="kv">
-          <div>
-            <dt>
-              Tumour probe score <span className="muted">(uncalibrated)</span>
-              <InfoTip label="About the tumour probe score">
-                Output of a linear probe on foundation-model tile embeddings{ev.tumor_prob_source ? ` (${ev.tumor_prob_source})` : ''},
-                smoothed over neighbouring tiles. A 0–1 score that ranks tiles; it is not the probability that the tile contains tumour,
-                which is why it can read high while the calibrated “Metastatic carcinoma” bar reads lower.
-              </InfoTip>
-            </dt>
-            <dd className="num">{ev.tumor_prob === null ? 'Unavailable' : score(ev.tumor_prob)}</dd>
+
+        <div className="signal primary">
+          <div className="signal-head">
+            <span className="signal-name">Tumour probe score</span>
+            <span className="signal-val num">{ev.tumor_prob === null ? 'Unavailable' : score(ev.tumor_prob)}</span>
           </div>
-        </dl>
+          <div className="xs muted">
+            Primary tumour signal: ranks tiles well{sig.probe ? <> (tile AUROC {sig.probe.auroc}{sig.probe.ci ? `, CI ${sig.probe.ci}` : ''}{sig.slides ? `, ${sig.slides} test slides` : ''})</> : null}.
+            Uncalibrated: the value is a 0–1 score, not a probability.
+            <InfoTip label="About the tumour probe score">
+              A linear probe on QuiltNet tile embeddings{ev.tumor_prob_source ? ` (${ev.tumor_prob_source})` : ''}, trained on 12 CAMELYON16
+              slides and smoothed over neighbouring tiles. In evaluation it separated tumour from benign tiles better than the text-prompt score.
+              AUROC (area under the ROC curve) = how well a score ranks positive tiles above negative ones; 0.5 is chance, 1.0 is perfect.
+            </InfoTip>
+          </div>
+        </div>
+
+        {meta && (
+          <div className="signal">
+            <div className="signal-head">
+              <span className="signal-name">Text prompt “metastasis” (calibrated)</span>
+              <span className="signal-val num">{pct(meta.value)}</span>
+            </div>
+            <div className="xs muted">
+              Secondary: calibrated scale (share of similar-scoring labelled tiles that carried the label), but a weaker ranker
+              {sig.text ? <> (tile AUROC {sig.text.auroc}{sig.text.ci ? `, CI ${sig.text.ci}` : ''})</> : null}.
+              {meta.jump_links.length > 0 && <> <button type="button" className="link-btn" onClick={() => onJump(meta.jump_links[0], `jump:${meta.id}`)}>Where</button></>}
+            </div>
+          </div>
+        )}
+        {conflict && (
+          <p className="small conflict-note"><Info size={13} aria-hidden className="inline-icon" /> These two signals disagree on this tile. In evaluation the probe separated tumour from benign tiles better; judge the tissue.</p>
+        )}
         {ev.artifacts.length > 0 && (
           <div className="chips">{ev.artifacts.map((a) => <span key={a} className="tag warn-tag"><TriangleAlert size={12} aria-hidden />Artifact: {a}</span>)}</div>
         )}
       </section>
 
-      {calibrated.length > 0 && (
+      {otherCal.length > 0 && (
         <section className="sub" aria-labelledby="ev-cal">
-          <div className="sub-head">
-            <h3 id="ev-cal">Calibrated tissue evidence</h3>
-            <InfoTip label="About calibrated bars">
-              Calibrated on labelled tiles: 0–100% is how often tiles with this score carried the label in the calibration set.
-            </InfoTip>
-          </div>
-          <div className="bars">{calibrated.map((f) => <Bar key={f.id} f={f} onJump={onJump} />)}</div>
+          <div className="sub-head"><h3 id="ev-cal">Calibrated text-prompt evidence</h3></div>
+          <div className="bars">{otherCal.map((f) => <Bar key={f.id} f={f} onJump={onJump} />)}</div>
         </section>
       )}
 
@@ -97,13 +121,13 @@ export default function EvidenceTab({ ev, loading, replaying, evidenceRegions, o
         <section className="sub">
           <button type="button" className="disclosure" aria-expanded={showText} onClick={() => setShowText(!showText)}>
             {showText ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
-            Text-prompt similarity <span className="tag warn-tag">unvalidated</span> <span className="muted num">({textOnly.length})</span>
+            Other text prompts <span className="tag">uncalibrated</span> <span className="muted num">({textOnly.length})</span>
           </button>
           {showText && (
             <>
               <p className="xs muted">
-                Similarity between the tile and a text description. Not calibrated and not a probability; some prompts
-                (e.g. mucus, glands, smooth muscle) describe colon tissue and are not specific to lymph node.
+                Raw similarity between the tile and a text description. Not calibrated, not validated and not a probability; several prompts
+                (mucus, glands, smooth muscle) describe colon tissue and are not specific to lymph node.
               </p>
               <div className="bars">{textOnly.map((f) => <Bar key={f.id} f={f} onJump={onJump} />)}</div>
             </>

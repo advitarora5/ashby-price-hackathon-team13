@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type KeyboardEvent as RKeyboardEvent } from 'react'
 import {
-  ArrowLeft, ArrowRight, Eye, EyeOff, FlaskConical, History, Info, ListChecks, Lock, Microscope,
-  PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, TriangleAlert,
+  ArrowRight, ChevronLeft, ChevronRight, Eye, EyeOff, History, Info, ListChecks, Lock, Microscope, TriangleAlert, X,
 } from 'lucide-react'
 import { api, ApiError } from '../api'
 import CaseQueue from '../components/review/CaseQueue'
@@ -11,35 +10,36 @@ import ModelTab from '../components/review/ModelTab'
 import DecisionTab from '../components/review/DecisionTab'
 import DecisionBar from '../components/review/DecisionBar'
 import ReplayPanel from '../components/review/ReplayPanel'
-import LayersBar, { ViewControls, type LayerKey, type Layers } from '../components/review/LayersBar'
+import ReviewToolbar, { type LayerKey, type Layers } from '../components/review/ReviewToolbar'
 import ShortcutHelp from '../components/review/ShortcutHelp'
 import SlideViewer, { type LayerSpec, type ViewerControls, type ViewerStatus, type ViewportReport } from '../components/review/SlideViewer'
 import StatusBadge from '../components/ui/StatusBadge'
 import Tabs from '../components/ui/Tabs'
-import { Button, ButtonLink } from '../components/ui/Button'
+import InfoTip from '../components/ui/InfoTip'
+import { ButtonLink } from '../components/ui/Button'
 import EmptyState from '../components/ui/EmptyState'
 import { href } from '../lib/router'
 import { absoluteTime, score, tissueLabel } from '../lib/format'
-import InfoTip from '../components/ui/InfoTip'
 import { deriveActivity } from '../lib/activity'
 import { useRecolouredCoverage } from '../lib/coverageOverlay'
 import { disagreementEval } from '../lib/research'
 import type { WorkflowState } from '../lib/workflow'
 import { routingScore } from '../lib/status'
 import type {
-  CaseDetail, CaseRow, Coverage, Decision, EvalDoc, Evidence, PolicyRec, Read, Rect, Region,
+  AuditEvent, CaseDetail, CaseRow, Coverage, Decision, EvalDoc, Evidence, Light, PolicyRec, Read, Rect, Region,
   ReplayStep, Signout, ViewEvent,
 } from '../types'
 
 const DEFAULT_LAYERS: Layers = { risk: true, disagreement: false, artifact: false, coverage: false, regions: true }
 type TabId = 'evidence' | 'unseen' | 'model' | 'decision'
+const cap = (s: string | null | undefined) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
 
 /** Everything needed to return to a case in this session without starting a new read. */
 interface Snapshot {
   detail: CaseDetail; read: Read | null; ev: Evidence | null; evRegions: Region[]; disputed: Region[]
-  coverage: Coverage | null; signout: Signout | null; rec: PolicyRec | null; layers: Layers
-  seq: number; t0: number; liveCoverage: Coverage | null; notice: string | null
-  confirmed: boolean; extraReads: { stage: string; decision: Decision }[]; tab: TabId
+  coverage: Coverage | null; checks: Signout[]; rec: PolicyRec | null; layers: Layers
+  seq: number; t0: number; liveCoverage: Coverage | null; readNote: string | null; priorExposure: string | null
+  confirmed: boolean; extraReads: { stage: string; decision: Decision }[]; tab: TabId; readOnly: boolean
 }
 
 interface Target { id: string; rect: Rect; label: string; what: string }
@@ -47,6 +47,18 @@ interface Target { id: string; rect: Rect; label: string; what: string }
 const store = {
   get(k: string) { try { return window.localStorage.getItem(k) } catch { return null } },
   set(k: string, v: string) { try { window.localStorage.setItem(k, v) } catch { /* unavailable */ } },
+}
+
+/** Rebuild the sign-out check history of a read from the audit log + its alert regions (no API change). */
+function checksFromAudit(events: AuditEvent[], readId: string, alertRegions: Region[], mode: string): Signout[] {
+  return events.filter((e) => e.read_id === readId && e.action === 'signout_check').map((e) => {
+    const d = (e.detail ?? {}) as { light?: Light; unseen_risk?: number | null; alerts?: string[] }
+    const ids = new Set(d.alerts ?? [])
+    return {
+      read_id: readId, light: d.light ?? 'unavailable', unseen_risk: d.unseen_risk ?? null, unseen_tissue_share: null,
+      thresholds: {}, regions: alertRegions.filter((r) => r.alert_id && ids.has(r.alert_id)), reason: null, coverage_mode: mode,
+    }
+  })
 }
 
 interface Props {
@@ -60,18 +72,24 @@ interface Props {
   onSelectCase: (id: string) => void
   focusMode: boolean
   onFocusMode: (on: boolean) => void
+  onCaseListOpened: () => void
 }
 
-export default function SlideReviewPage({ caseId, visible, cases, casesErr, blindAll, evalDocs, onCasesChanged, onSelectCase, focusMode, onFocusMode }: Props) {
+export default function SlideReviewPage({ caseId, visible, cases, casesErr, blindAll, evalDocs, onCasesChanged, onSelectCase, focusMode, onFocusMode, onCaseListOpened }: Props) {
   // ---- layout state (per viewer, persisted) ----
   const [navOpen, setNavOpen] = useState(() => (store.get('claripath.review.nav') ?? (window.innerWidth >= 1700 ? '1' : '0')) === '1')
   const [sideOpen, setSideOpen] = useState(() => store.get('claripath.review.side') !== '0')
   const [sideW, setSideW] = useState(() => Math.min(560, Math.max(300, Number(store.get('claripath.review.sideW')) || 380)))
-  const [navigatorOn, setNavigatorOn] = useState(() => window.innerWidth >= 1280)
+  const [vw, setVw] = useState(() => window.innerWidth)
+  const [navigatorOn, setNavigatorOn] = useState(() => window.innerWidth >= 1280 && window.innerHeight > 700)
   const [showHelp, setShowHelp] = useState(false)
-  useEffect(() => { store.set('claripath.review.nav', navOpen ? '1' : '0') }, [navOpen])
+  const [hintSeen, setHintSeen] = useState(() => store.get('claripath.review.hintSeen') === '1')
+  useEffect(() => { store.set('claripath.review.nav', navOpen ? '1' : '0'); if (navOpen) onCaseListOpened() }, [navOpen, onCaseListOpened])
   useEffect(() => { store.set('claripath.review.side', sideOpen ? '1' : '0') }, [sideOpen])
   useEffect(() => { store.set('claripath.review.sideW', String(sideW)) }, [sideW])
+  useEffect(() => { const on = () => setVw(window.innerWidth); window.addEventListener('resize', on); return () => window.removeEventListener('resize', on) }, [])
+  // the slide gets priority on smaller screens: the panel never takes more than ~27% of the window
+  const effSideW = Math.max(300, Math.min(sideW, Math.round(vw * 0.27)))
 
   // ---- read state ----
   const [selected, setSelected] = useState<string | null>(null)
@@ -82,18 +100,24 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
   const [evRegions, setEvRegions] = useState<Region[]>([])
   const [disputed, setDisputed] = useState<Region[]>([])
   const [coverage, setCoverage] = useState<Coverage | null>(null)
-  const [signout, setSignout] = useState<Signout | null>(null)
+  const [checks, setChecks] = useState<Signout[]>([])
+  const [replaySignout, setReplaySignout] = useState<Signout | null>(null)
   const [rec, setRec] = useState<PolicyRec | null>(null)
   const [confirmed, setConfirmed] = useState(false)
+  const [readOnly, setReadOnly] = useState(false)
   const [extraReads, setExtraReads] = useState<{ stage: string; decision: Decision }[]>([])
   const [layers, setLayers] = useState<Layers>(DEFAULT_LAYERS)
   const [allHidden, setAllHidden] = useState(false)
-  const [opacity, setOpacity] = useState(0.55)
+  const [opacity, setOpacity] = useState(0.5)
+  const [inspectDim, setInspectDim] = useState(false)
   const [tab, setTab] = useState<TabId>('evidence')
   const [focus, setFocus] = useState<{ rect: Rect; key: number } | null>(null)
   const [activeTarget, setActiveTarget] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [readNote, setReadNote] = useState<string | null>(null)
+  const [priorExposure, setPriorExposure] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ text: string; tone: 'info' | 'warn'; key: number } | null>(null)
+  const [announce, setAnnounce] = useState('')
   const [busy, setBusy] = useState(false)
   const [zoomMag, setZoomMag] = useState<number | null>(null)
   const [vStatus, setVStatus] = useState<ViewerStatus>({ state: 'loading' })
@@ -109,6 +133,13 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
   replayActive.current = replay.active
   const requested = useRef<string | null>(null)
   const sessions = useRef(new Map<string, Snapshot>())
+
+  const showToast = useCallback((text: string, tone: 'info' | 'warn' = 'info') => setToast({ text, tone, key: Date.now() }), [])
+  useEffect(() => {
+    if (!toast || toast.tone === 'warn') return
+    const t = window.setTimeout(() => setToast(null), 8000)
+    return () => window.clearTimeout(t)
+  }, [toast])
 
   const loadEvidence = useCallback(async (cid: string, r: Read | null, where?: { tile?: string; x?: number; y?: number }) => {
     setEvLoading(true)
@@ -137,7 +168,8 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
       liveCoverage.current = c
       setCoverage((prev) => (replayActive.current ? prev : c))
       if (c.revisited_alerts.length) {
-        setSignout((s) => s && ({ ...s, regions: s.regions.map((g) => (g.alert_id && c.revisited_alerts.includes(g.alert_id) ? { ...g, alert_status: 'revisited' } : g)) }))
+        const mark = (s: Signout) => ({ ...s, regions: s.regions.map((g) => (g.alert_id && c.revisited_alerts.includes(g.alert_id) ? { ...g, alert_status: 'revisited' } : g)) })
+        setChecks((cs) => cs.map(mark))
       }
     } catch { queue.current.unshift(...batch) }
   }, [])
@@ -150,67 +182,98 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
   // keep a live snapshot of the open case so switching cases never discards a read
   const snap = useRef<Snapshot | null>(null)
   snap.current = detail ? {
-    detail, read, ev, evRegions, disputed, coverage, signout, rec, layers, confirmed, extraReads, tab,
-    seq: seq.current, t0: t0.current, liveCoverage: liveCoverage.current, notice,
+    detail, read, ev, evRegions, disputed, coverage, checks, rec, layers, confirmed, extraReads, tab, readOnly,
+    seq: seq.current, t0: t0.current, liveCoverage: liveCoverage.current, readNote, priorExposure,
   } : null
+
+  const resetFor = (id: string) => {
+    setSelected(id); setDetail(null); setRead(null); setEv(null); setEvRegions([]); setDisputed([])
+    setCoverage(null); setChecks([]); setRec(null); setLayers(DEFAULT_LAYERS); setReadNote(null); setPriorExposure(null)
+    setConfirmed(false); setExtraReads([]); setTab('evidence'); setReadOnly(false)
+    liveCoverage.current = null
+    seq.current = 0; t0.current = performance.now()
+  }
+
+  /** Start a fresh read; flags (and audits) any earlier AI exposure on a blind read. */
+  const startRead = useCallback(async (id: string, aiSeenAt: string | null, prevAt: string | null) => {
+    const r = await api.createRead(id, blindAll)
+    if (requested.current !== id) return null
+    setRead(r)
+    if (r.review_mode === 'blind' && aiSeenAt) {
+      const msg = `AI evidence for this case was shown in an earlier read (${absoluteTime(aiSeenAt)}). This read is logged as blind-first, but your call may not be independent; this is noted in the audit log.`
+      setPriorExposure(msg); setReadNote(msg); showToast(msg, 'warn')
+      api.audit('note', { read_id: r.read_id, case_id: id, detail: { prior_ai_exposure: true, ai_seen_at: aiSeenAt } })
+    } else if (prevAt) {
+      setReadNote(`New read started. A previous read of this case exists (${absoluteTime(prevAt)}).`)
+    }
+    await loadEvidence(id, r)
+    return r
+  }, [blindAll, loadEvidence, showToast])
 
   const openCase = useCallback(async (id: string) => {
     await flush()
     if (snap.current) sessions.current.set(snap.current.detail.case_id, snap.current)
-    setActiveTarget(null); setFocus(null); setError(null); setZoomMag(null); setAllHidden(false)
-    setReplay({ active: false, follow: null, fix: null })
+    setActiveTarget(null); setFocus(null); setError(null); setZoomMag(null); setAllHidden(false); setInspectDim(false)
+    setReplay({ active: false, follow: null, fix: null }); setReplaySignout(null); setToast(null)
     queue.current = []
     const saved = sessions.current.get(id)
     if (saved) {
       setSelected(id); setDetail(saved.detail); setRead(saved.read); setEv(saved.ev); setEvRegions(saved.evRegions)
-      setDisputed(saved.disputed); setCoverage(saved.coverage); setSignout(saved.signout); setRec(saved.rec)
-      setLayers(saved.layers); setNotice(saved.notice); setConfirmed(saved.confirmed); setExtraReads(saved.extraReads); setTab(saved.tab)
+      setDisputed(saved.disputed); setCoverage(saved.coverage); setChecks(saved.checks); setRec(saved.rec)
+      setLayers(saved.layers); setReadNote(saved.readNote); setPriorExposure(saved.priorExposure); setConfirmed(saved.confirmed)
+      setExtraReads(saved.extraReads); setTab(saved.tab); setReadOnly(saved.readOnly)
       seq.current = saved.seq; t0.current = saved.t0; liveCoverage.current = saved.liveCoverage
       return
     }
-    setSelected(id); setDetail(null); setRead(null); setEv(null); setEvRegions([]); setDisputed([])
-    setCoverage(null); setSignout(null); setRec(null); setLayers(DEFAULT_LAYERS); setNotice(null)
-    setConfirmed(false); setExtraReads([]); setTab('evidence')
-    liveCoverage.current = null
-    seq.current = 0; t0.current = performance.now()
+    resetFor(id)
     try {
-      const [d, events] = await Promise.all([api.case(id), api.caseAudit(id).catch(() => [])])
+      const [d, events] = await Promise.all([api.case(id), api.caseAudit(id).catch(() => [] as AuditEvent[])])
       if (requested.current !== id) return
       setDetail(d)
       const act = deriveActivity(events)[id]
-      // another session or a reload: resume the latest live read if the case is still in progress
-      let r: Read | null = null
-      if (d.review_status === 'in_review' && act?.lastReadId) {
-        try {
-          const prev = await api.read(act.lastReadId)
-          if (prev.source === 'live' && prev.case_id === id) r = prev
-        } catch { /* not restorable: fall through to a new read */ }
+      let prev: Read | null = null
+      if (act?.lastReadId && d.review_status !== 'unread') {
+        try { const r = await api.read(act.lastReadId); if (r.source === 'live' && r.case_id === id) prev = r } catch { /* not restorable */ }
       }
-      if (r) {
-        const cov = await api.coverage(r.read_id).catch(() => null)
+      if (prev && d.review_status === 'in_review') {
+        // another session or a reload: resume the latest read of a case still in progress
+        const cov = await api.coverage(prev.read_id).catch(() => null)
         if (requested.current !== id) return
-        setRead(r); setCoverage(cov); liveCoverage.current = cov
+        setRead(prev); setCoverage(cov); liveCoverage.current = cov
         seq.current = (cov?.n_events ?? 0) + 1
-        setNotice(`Resumed the most recent read of this case, opened ${act?.lastReadOpenedAt ? absoluteTime(act.lastReadOpenedAt) : 'earlier'}${r.initial_decision ? ` (your call: ${r.initial_decision})` : ''}.`)
-        await loadEvidence(id, r)
-        if (r.initial_decision) setRec(await api.policy(r.read_id).catch(() => null))
-      } else {
-        r = await api.createRead(id, blindAll)
+        const msg = `Resumed the read opened ${act?.lastReadOpenedAt ? absoluteTime(act.lastReadOpenedAt) : 'earlier'}${prev.initial_decision ? ` (your call: ${prev.initial_decision})` : ''}.`
+        setReadNote(msg); showToast(msg)
+        await loadEvidence(id, prev)
+        if (prev.initial_decision) setRec(await api.policy(prev.read_id).catch(() => null))
+      } else if (prev && d.review_status === 'signed_out') {
+        // completed: show the recorded outcome read-only; a new read is an explicit choice
+        const [cov, unseen] = await Promise.all([api.coverage(prev.read_id).catch(() => null), api.regions(id, 'unseen', prev.read_id).catch(() => null)])
         if (requested.current !== id) return
-        setRead(r)
-        if (r.review_mode === 'blind' && act?.aiSeenAt) {
-          setNotice(`AI evidence for this case was shown in an earlier read (${absoluteTime(act.aiSeenAt)}). This read is logged as blind-first, but your assessment may not be independent; this has been noted in the audit log.`)
-          api.audit('note', { read_id: r.read_id, case_id: id, detail: { prior_ai_exposure: true, ai_seen_at: act.aiSeenAt } })
-        } else if (act?.lastReadId) {
-          setNotice(`Started a new read. A previous read of this case exists (${act.lastReadOpenedAt ? absoluteTime(act.lastReadOpenedAt) : 'earlier'}).`)
-        }
-        await loadEvidence(id, r)
+        setRead(prev); setCoverage(cov); liveCoverage.current = cov; setReadOnly(true); setConfirmed(!!prev.final_decision)
+        setChecks(checksFromAudit(events, prev.read_id, unseen?.regions ?? [], cov?.mode ?? 'viewport'))
+        const msg = `Completed case: showing the recorded read from ${act?.lastReadOpenedAt ? absoluteTime(act.lastReadOpenedAt) : 'earlier'} (read-only).`
+        setReadNote(msg); showToast(msg)
+        await loadEvidence(id, prev)
+        if (prev.initial_decision || prev.final_decision) setRec(await api.policy(prev.read_id).catch(() => null))
+        setTab('decision')
+      } else {
+        await startRead(id, act?.aiSeenAt ?? null, act?.lastReadOpenedAt ?? null)
       }
       onCasesChanged()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e))
     }
-  }, [blindAll, flush, loadEvidence, onCasesChanged])
+  }, [flush, loadEvidence, onCasesChanged, startRead, showToast])
+
+  const startNewRead = () => guard(async () => {
+    if (!selected) return
+    const events = await api.caseAudit(selected).catch(() => [] as AuditEvent[])
+    const act = deriveActivity(events)[selected]
+    resetFor(selected)
+    setDetail(snap.current?.detail ?? (await api.case(selected)))
+    await startRead(selected, act?.aiSeenAt ?? null, act?.lastReadOpenedAt ?? null)
+    onCasesChanged()
+  })
 
   // route-driven: #/review/<id> opens that case once (guard survives StrictMode double effects)
   useEffect(() => {
@@ -221,12 +284,13 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
 
   const onViewport = useCallback((v: ViewportReport) => {
     if (detail) setZoomMag((10 * v.zoom) / detail.mpp)
-    if (!readRef.current || replayActive.current) return
+    if (!readRef.current || replayActive.current || readOnly) return
     queue.current.push({ seq: seq.current++, t_ms: performance.now() - t0.current, kind: 'viewport', ...v })
-  }, [detail])
+  }, [detail, readOnly])
 
   const jump = useCallback((r: Rect, what: string) => {
     setFocus({ rect: r, key: Date.now() })
+    setInspectDim(true) // let the morphology, not the colour, be judged
     const id = what.includes(':') ? what.slice(what.indexOf(':') + 1) : what
     setActiveTarget(id)
     const action = what.startsWith('alert') ? 'alert_clicked' : what.startsWith('jump') ? 'jump_link_clicked' : 'region_clicked'
@@ -241,12 +305,12 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
   const doSignout = async (r: Read, d: Decision) => {
     await flush()
     const s = await api.signout(r.read_id, d)
-    setSignout(s)
+    setChecks((cs) => [...cs, s])
     setLayers((l) => ({ ...l, coverage: true }))
     setAllHidden(false)
     setCoverage(await api.coverage(r.read_id))
     setRec(await api.policy(r.read_id))
-    setTab('unseen'); setSideOpen(true)
+    setTab(s.regions.length || d === 'benign' ? 'unseen' : 'decision'); setSideOpen(true)
     if (s.regions[0]) jump(s.regions[0], `alert:${s.regions[0].region_id}`)
     onCasesChanged()
   }
@@ -261,7 +325,11 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     const wasHidden = ev?.hidden
     const r = await api.decision(read.read_id, 'initial', d)
     setRead(r)
-    if (wasHidden && r.evidence_visible) { await loadEvidence(selected, r); setTab('evidence'); setSideOpen(true) }
+    if (wasHidden && r.evidence_visible) {
+      await loadEvidence(selected, r); setTab('evidence'); setSideOpen(true)
+      setAnnounce(`Your call, ${d}, is recorded. AI evidence is now shown in the Evidence tab.`)
+      window.setTimeout(() => document.getElementById('rv-tab-evidence')?.focus(), 50)
+    } else setAnnounce(`Your call, ${d}, is recorded.`)
     setRec(await api.policy(r.read_id))
     onCasesChanged()
   })
@@ -276,9 +344,10 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     if (!read) return
     const r = await api.decision(read.read_id, 'final', d)
     setRead(r); setConfirmed(true)
-    if (signout) await doSignout(r, d)
+    if (checks.length) await doSignout(r, d)
     else setRec(await api.policy(r.read_id))
     setTab('decision')
+    setAnnounce(`Final call ${d} recorded.`)
   })
 
   const secondRead = async (stage: 'second_reader' | 'third_reader', d: Decision) => guard(async () => {
@@ -293,60 +362,65 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     setReplay({ active: true, follow: s.viewport ? { ...s.viewport, key: s.cursor } : null,
       fix: s.last_fixation ? { x: s.last_fixation.x, y: s.last_fixation.y } : null })
     if (s.signout) {
-      setSignout(s.signout)
+      setReplaySignout(s.signout)
       if (s.signout.regions[0]) setActiveTarget(s.signout.regions[0].region_id)
     }
   }, [])
   const onReplayStart = useCallback(() => {
-    setSignout(null); setActiveTarget(null)
+    setReplaySignout(null); setActiveTarget(null)
     setLayers((l) => ({ ...l, coverage: true }))
     setReplay({ active: true, follow: null, fix: null })
   }, [])
   const onReplayStop = useCallback(() => {
     setReplay({ active: false, follow: null, fix: null })
-    setCoverage(liveCoverage.current); setSignout(null)
+    setCoverage(liveCoverage.current); setReplaySignout(null)
   }, [])
 
   // ---- derived ----
   const evidenceVisible = !!ev && !ev.hidden
+  const latestCheck = replay.active ? replaySignout : checks[checks.length - 1] ?? null
+  /** Alerts persist once shown: a later re-check on a revised (positive) call doesn't erase them. */
+  const alertCheck = useMemo(() => (replay.active ? replaySignout : [...checks].reverse().find((c) => c.regions.length > 0) ?? null), [replay.active, replaySignout, checks])
+  const alerts = useMemo(() => alertCheck?.regions ?? [], [alertCheck])
+  const unrevisited = alerts.filter((r) => r.alert_status !== 'revisited')
   const coverageUrl = useRecolouredCoverage(layers.coverage && !allHidden && coverage ? `${coverage.overlay_url}?v=${coverage.n_events}` : null)
+  const heatOpacity = inspectDim ? 0.12 : opacity
   const layerSpecs = useMemo<LayerSpec[]>(() => {
     if (!detail || allHidden) return []
     const out: LayerSpec[] = []
-    if (layers.artifact) out.push({ key: 'artifact', url: api.overlayUrl(detail.case_id, 'artifact'), opacity: 0.8 })
+    if (layers.artifact) out.push({ key: 'artifact', url: api.overlayUrl(detail.case_id, 'artifact'), opacity: inspectDim ? 0.3 : 0.8 })
     if (evidenceVisible && !replay.active && layers.risk && detail.layers.includes('risk'))
-      out.push({ key: 'risk', url: api.overlayUrl(detail.case_id, 'risk', read?.read_id), opacity })
+      out.push({ key: 'risk', url: api.overlayUrl(detail.case_id, 'risk', read?.read_id), opacity: heatOpacity })
     if (evidenceVisible && !replay.active && layers.disagreement && detail.layers.includes('disagreement'))
-      out.push({ key: 'disagreement', url: api.overlayUrl(detail.case_id, 'disagreement', read?.read_id), opacity: Math.min(1, opacity + 0.15) })
-    if (layers.coverage && coverageUrl) out.push({ key: 'coverage', url: coverageUrl, opacity: 1 })
+      out.push({ key: 'disagreement', url: api.overlayUrl(detail.case_id, 'disagreement', read?.read_id), opacity: Math.min(1, heatOpacity + 0.15) })
+    if (layers.coverage && coverageUrl) out.push({ key: 'coverage', url: coverageUrl, opacity: inspectDim ? 0.35 : 1 })
     return out
-  }, [detail, layers, evidenceVisible, read, coverageUrl, replay.active, opacity, allHidden])
+  }, [detail, layers, evidenceVisible, read, coverageUrl, replay.active, heatOpacity, allHidden, inspectDim])
 
   const boxes = useMemo(() => {
     const out: { region: Region; tone: 'evidence' | 'disputed' | 'unseen' | 'selected'; label: string }[] = []
     if (allHidden) return out
+    const quiet = alerts.length > 0
     if (evidenceVisible && layers.regions && !replay.active) {
-      // once unseen alerts exist, AI region labels step back so the alert labels stay legible
-      const quiet = !!signout?.regions.length
       evRegions.slice(0, 3).forEach((r) => out.push({ region: r, tone: 'evidence', label: quiet ? '' : `#${r.rank} probe score ${score(r.risk)}` }))
       if (layers.disagreement) disputed.slice(0, 3).forEach((r) => out.push({ region: r, tone: 'disputed', label: `#${r.rank} models disagree` }))
     }
-    signout?.regions.forEach((r) => out.push({ region: r, tone: 'unseen', label: `Not yet viewed · ${r.rank}` }))
+    alerts.forEach((r) => out.push({ region: r, tone: 'unseen', label: r.alert_status === 'revisited' ? `Region ${r.rank} · revisited` : `Not yet viewed · ${r.rank}` }))
     if (ev?.tile_rect && evidenceVisible && !replay.active)
       out.push({ region: { ...ev.tile_rect, region_id: 'tile', kind: 'tile', rank: 0, risk: null, disagreement: null, n_tiles: 1, peak_tile_id: null, source: null }, tone: 'selected', label: '' })
     return out
-  }, [evRegions, disputed, signout, ev, evidenceVisible, layers, replay.active, allHidden])
+  }, [evRegions, disputed, alerts, ev, evidenceVisible, layers, replay.active, allHidden])
 
   /** Highlighted regions to step through with J/K: unseen alerts first, then AI regions. */
   const targets = useMemo<Target[]>(() => {
     const t: Target[] = []
-    signout?.regions.forEach((r) => t.push({ id: r.region_id, rect: r, label: `Not yet viewed ${r.rank}`, what: `alert:${r.region_id}` }))
+    alerts.forEach((r) => t.push({ id: r.region_id, rect: r, label: r.alert_status === 'revisited' ? `Region ${r.rank} (revisited)` : `Not yet viewed ${r.rank}`, what: `alert:${r.region_id}` }))
     if (evidenceVisible && !replay.active) {
-      evRegions.slice(0, 5).forEach((r) => t.push({ id: r.region_id, rect: r, label: `Region #${r.rank}`, what: `region:${r.region_id}` }))
+      evRegions.slice(0, 5).forEach((r) => t.push({ id: r.region_id, rect: r, label: `AI region #${r.rank}`, what: `region:${r.region_id}` }))
       if (layers.disagreement) disputed.slice(0, 3).forEach((r) => t.push({ id: r.region_id, rect: r, label: `Disputed #${r.rank}`, what: `disputed:${r.region_id}` }))
     }
     return t
-  }, [signout, evRegions, disputed, evidenceVisible, replay.active, layers.disagreement])
+  }, [alerts, evRegions, disputed, evidenceVisible, replay.active, layers.disagreement])
   const targetIdx = targets.findIndex((t) => t.id === activeTarget)
   const stepTarget = useCallback((dir: 1 | -1) => {
     if (!targets.length) return
@@ -354,7 +428,7 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     jump(targets[i].rect, targets[i].what)
   }, [targets, targetIdx, jump])
 
-  const wf: WorkflowState = { read, signout, rec, evidenceVisible, confirmed }
+  const wf: WorkflowState = { read, signout: latestCheck, rec, evidenceVisible, confirmed }
   const idx = cases.findIndex((c) => c.case_id === selected)
   const prevCase = idx > 0 ? cases[idx - 1] : null
   const nextCase = idx >= 0 && idx < cases.length - 1 ? cases[idx + 1] : null
@@ -368,13 +442,16 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
   const routing = detail ? routingScore(detail) : null
   const evalResult = disagreementEval(evalDocs)
   const minMag = coverage?.params.min_magnification ?? 10
+  const blindPending = !!read && read.review_mode === 'blind' && !read.initial_decision
 
   const toggleLayer = useCallback((k: LayerKey, on: boolean) => {
     setLayers((l) => ({ ...l, [k]: on }))
     if (on) setAllHidden(false)
+    setInspectDim(false)
     api.audit('layer_toggled', { read_id: readRef.current?.read_id, case_id: selected ?? undefined, detail: { layer: k, on } })
   }, [selected])
   const toggleAll = useCallback(() => {
+    setInspectDim(false)
     setAllHidden((h) => {
       api.audit('layer_toggled', { read_id: readRef.current?.read_id, case_id: selected ?? undefined, detail: { layer: 'all', on: h } })
       return !h
@@ -382,6 +459,7 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
   }, [selected])
   const toggleNavigator = useCallback(() => setNavigatorOn((n) => { controls.current?.setNavigator(!n); return !n }), [])
   useEffect(() => { if (vStatus.state === 'ready') controls.current?.setNavigator(navigatorOn) }, [vStatus, navigatorOn])
+  const openHelp = useCallback(() => { setShowHelp((s) => !s); setHintSeen(true); store.set('claripath.review.hintSeen', '1') }, [])
 
   // ---- keyboard shortcuts (never while typing, never with modifiers) ----
   useEffect(() => {
@@ -399,116 +477,96 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
         c: () => toggleLayer('coverage', !layers.coverage), a: () => toggleLayer('artifact', !layers.artifact),
         h: toggleAll, n: toggleNavigator,
         '+': () => controls.current?.zoomBy(1.6), '=': () => controls.current?.zoomBy(1.6), '-': () => controls.current?.zoomBy(1 / 1.6),
-        '0': () => controls.current?.home(),
+        '0': () => { setInspectDim(false); controls.current?.home() },
         f: () => onFocusMode(!focusMode),
         '[': () => setNavOpen((o) => !o), ']': () => setSideOpen((o) => !o),
         '1': () => { setTab('evidence'); setSideOpen(true) }, '2': () => { setTab('unseen'); setSideOpen(true) },
         '3': () => { setTab('model'); setSideOpen(true) }, '4': () => { setTab('decision'); setSideOpen(true) },
-        '?': () => setShowHelp((s) => !s),
+        '?': openHelp,
         Escape: () => { if (showHelp) setShowHelp(false); else if (focusMode) onFocusMode(false) },
       }
       const fn = map[k] ?? map[k.toLowerCase()]
       if (!fn) return
-      // 0 and +/- inside the viewer canvas are handled by OpenSeadragon itself
-      if (t?.closest('.osd') && /^[0+=-]$/.test(k)) return
+      if (t?.closest('.osd') && /^[0+=-]$/.test(k)) return // OpenSeadragon handles these on the canvas
       e.preventDefault()
       fn()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [visible, detail, evidenceVisible, layers, toggleLayer, toggleAll, toggleNavigator, stepTarget, focusMode, onFocusMode, showHelp])
+  }, [visible, detail, evidenceVisible, layers, toggleLayer, toggleAll, toggleNavigator, stepTarget, focusMode, onFocusMode, showHelp, openHelp])
 
   // ---- side panel resize (pointer drag, or arrow keys on the handle) ----
   const dragging = useRef<{ x: number; w: number } | null>(null)
-  const onResizeDown = (e: RPointerEvent<HTMLDivElement>) => { dragging.current = { x: e.clientX, w: sideW }; e.currentTarget.setPointerCapture(e.pointerId) }
+  const onResizeDown = (e: RPointerEvent<HTMLDivElement>) => { dragging.current = { x: e.clientX, w: effSideW }; e.currentTarget.setPointerCapture(e.pointerId) }
   const onResizeMove = (e: RPointerEvent<HTMLDivElement>) => {
     if (!dragging.current) return
     setSideW(Math.min(560, Math.max(300, dragging.current.w + (dragging.current.x - e.clientX))))
   }
   const onResizeKey = (e: RKeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'ArrowLeft') { e.preventDefault(); setSideW((w) => Math.min(560, w + 20)) }
-    if (e.key === 'ArrowRight') { e.preventDefault(); setSideW((w) => Math.max(300, w - 20)) }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); setSideW(Math.min(560, effSideW + 20)) }
+    if (e.key === 'ArrowRight') { e.preventDefault(); setSideW(Math.max(300, effSideW - 20)) }
   }
 
   const showNav = navOpen && !focusMode
   const showSide = sideOpen && !focusMode
-  const alertsOpen = signout?.regions.filter((r) => r.alert_status !== 'revisited').length ?? 0
 
   const tabs = [
     { id: 'evidence', label: 'Evidence', icon: evidenceVisible ? undefined : <Lock size={12} aria-label="locked" /> },
-    { id: 'unseen', label: 'Unseen', count: signout ? alertsOpen : undefined },
-    { id: 'model', label: 'Models', icon: evidenceVisible ? undefined : <Lock size={12} aria-label="locked" /> },
+    { id: 'unseen', label: 'Unseen', count: alertCheck ? unrevisited.length : undefined },
+    { id: 'model', label: 'Models' },
     { id: 'decision', label: 'Decision' },
   ]
 
+  // mode chip reflects what happened, not only what was planned
+  const modeChip = !read ? null : read.review_mode === 'blind'
+    ? (read.initial_decision
+      ? <span className="badge tone-info" title="Your blind call was recorded before AI evidence was shown">
+          <EyeOff size={13} aria-hidden />Blind call: {cap(read.initial_decision)}{read.final_decision && confirmed && read.final_decision !== read.initial_decision ? ` → ${cap(read.final_decision)}` : ''}
+        </span>
+      : <span className="badge tone-info" title="Your call is recorded before AI evidence is shown"><EyeOff size={13} aria-hidden />Blind-first</span>)
+    : <span className="badge tone-neutral" title="AI evidence is shown from the start"><Eye size={13} aria-hidden />Evidence-first</span>
+
+  const title = detail ? (
+    <>
+      <h1 className="mono">{detail.slide_id}</h1>
+      <StatusBadge kind="tier" value={detail.tier} />
+      {modeChip}
+      {priorExposure && <span className="badge tone-warning" title={priorExposure}><TriangleAlert size={13} aria-hidden /><span className="tb-label">AI seen earlier</span></span>}
+      {readOnly && <span className="badge tone-success" title="Completed case shown read-only">Completed · read-only</span>}
+      {replay.active && <span className="badge tone-accent"><History size={13} aria-hidden /><span className="tb-label">Replay</span></span>}
+      <InfoTip label="Case and read details">
+        {tissueLabel(detail.organ)} · {detail.dataset.toUpperCase()}.{' '}
+        {blindPending ? 'Model scores are hidden until your call.' : <>Model uncertainty (routing signal, normalised entropy 0–1): {score(routing)}.</>}{' '}
+        Slide {detail.width.toLocaleString()} × {detail.height.toLocaleString()} px at {detail.mpp.toFixed(3)} µm/px.
+        {readNote && <><br /><br />{readNote}</>}
+      </InfoTip>
+    </>
+  ) : <h1>Slide Review</h1>
+
   return (
-    <div className={`review ${showNav ? 'has-nav' : ''} ${showSide ? 'has-side' : ''}`} style={{ ['--side-w' as string]: `${sideW}px` }}>
+    <div className={`review ${showNav ? 'has-nav' : ''} ${showSide ? 'has-side' : ''}`} style={{ ['--side-w' as string]: `${effSideW}px` }}>
+      <div className="sr-only" aria-live="polite" role="status">{announce}</div>
       {showNav && (
         <aside className="review-nav" aria-label="Case list">
-          <CaseQueue cases={cases} selected={selected} onSelect={onSelectCase} error={casesErr} />
+          <CaseQueue cases={cases} selected={selected} onSelect={onSelectCase} error={casesErr} maskScoresFor={blindPending ? selected : null} />
         </aside>
       )}
 
       <section className="review-center" aria-label="Slide viewer">
-        <div className="review-toolbar">
-          {!focusMode && (
-            <Button variant="ghost" size="sm" icon={showNav ? PanelLeftClose : PanelLeftOpen} onClick={() => setNavOpen(!navOpen)}
-              aria-expanded={showNav} aria-label={showNav ? 'Hide case list ([)' : 'Show case list ([)'} title={showNav ? 'Hide case list ([)' : 'Show case list ([)'} />
-          )}
-          {detail ? (
-            <div className="case-title">
-              <h1 className="mono">{detail.slide_id}</h1>
-              <StatusBadge kind="tier" value={detail.tier} />
-              {read && (read.review_mode === 'blind'
-                ? <span className="badge tone-info" title="Your assessment is recorded before AI evidence is shown"><EyeOff size={13} aria-hidden />Blind-first</span>
-                : <span className="badge tone-neutral" title="AI evidence is shown from the start"><Eye size={13} aria-hidden />Evidence-first</span>)}
-              {replay.active && <span className="badge tone-accent"><History size={13} aria-hidden />Replaying recorded read</span>}
-              <InfoTip label="Case details">
-                {tissueLabel(detail.organ)} · {detail.dataset.toUpperCase()}. Model uncertainty (routing signal, normalised entropy 0–1): {score(routing)}.
-                Slide {detail.width.toLocaleString()} × {detail.height.toLocaleString()} px at {detail.mpp.toFixed(3)} µm/px.
-              </InfoTip>
-            </div>
-          ) : <div className="case-title"><h1>Slide Review</h1></div>}
-          <span className="toolbar-spacer" />
-          {detail && (
-            <ViewControls zoomMag={zoomMag} minMag={minMag} onZoom={(f) => controls.current?.zoomBy(f)} onHome={() => controls.current?.home()}
-              navigator={navigatorOn} onNavigator={toggleNavigator} focusMode={focusMode} onFocusMode={() => onFocusMode(!focusMode)}
-              onShortcuts={() => setShowHelp((s) => !s)} />
-          )}
-          <span className="ruo-chip xs" title="Research use only. Not for clinical diagnosis."><FlaskConical size={12} aria-hidden /> RUO</span>
-          <div className="btn-row nowrap">
-            <ButtonLink size="sm" variant="ghost" icon={ArrowLeft} href={prevCase ? href({ page: 'review', caseId: prevCase.case_id }) : undefined}
-              aria-disabled={!prevCase} aria-label="Previous case in queue" title={prevCase ? `Previous: ${prevCase.slide_id}` : 'No previous case'} />
-            <ButtonLink size="sm" variant="ghost" icon={ArrowRight} href={nextCase ? href({ page: 'review', caseId: nextCase.case_id }) : undefined}
-              aria-disabled={!nextCase} aria-label="Next case in queue" title={nextCase ? `Next: ${nextCase.slide_id}` : 'No next case'} />
-          </div>
-          {!focusMode && (
-            <Button variant="ghost" size="sm" icon={showSide ? PanelRightClose : PanelRightOpen} onClick={() => setSideOpen(!sideOpen)}
-              aria-expanded={showSide} aria-label={showSide ? 'Hide AI panel (])' : 'Show AI panel (])'} title={showSide ? 'Hide AI panel (])' : 'Show AI panel (])'} />
-          )}
-        </div>
-
-        {detail && (
-          <LayersBar layers={layers} onToggle={toggleLayer} allHidden={allHidden} onToggleAll={toggleAll} evidenceVisible={evidenceVisible && !replay.active}
-            opacity={opacity} onOpacity={setOpacity}
-            target={targets.length ? { index: Math.max(0, targetIdx), total: targets.length, label: targetIdx >= 0 ? targets[targetIdx].label : 'Highlighted regions' } : null}
-            onPrevTarget={() => stepTarget(-1)} onNextTarget={() => stepTarget(1)} />
-        )}
-
-        {detail && (detail.problems.length > 0 || !detail.dzi_url || error || notice) && (
-          <div className="review-notices">
-            {notice && <div className="notice" role="status"><Info size={14} aria-hidden /><span>{notice}</span>
-              <button type="button" className="link-btn xs notice-x" onClick={() => setNotice(null)}>Dismiss</button></div>}
-            {detail.problems.map((p) => <div key={p} className="notice warn"><TriangleAlert size={14} aria-hidden />{p}</div>)}
-            {!detail.dzi_url && <div className="notice"><Info size={14} aria-hidden />Whole-slide file not on this machine: showing the thumbnail.</div>}
-            {error && <div className="notice warn" role="alert"><TriangleAlert size={14} aria-hidden />{error}</div>}
-          </div>
-        )}
+        <ReviewToolbar title={title} navOpen={showNav} onToggleNav={() => setNavOpen(!navOpen)} sideOpen={showSide} onToggleSide={() => setSideOpen(!sideOpen)}
+          focusMode={focusMode} onFocusMode={() => onFocusMode(!focusMode)} hasCase={!!detail}
+          layers={layers} onToggleLayer={toggleLayer} allHidden={allHidden} onToggleAll={toggleAll} evidenceVisible={evidenceVisible && !replay.active}
+          opacity={opacity} onOpacity={(v) => { setOpacity(v); setInspectDim(false) }}
+          zoomMag={zoomMag} minMag={minMag} onZoom={(f) => controls.current?.zoomBy(f)} onHome={() => { setInspectDim(false); controls.current?.home() }}
+          navigator={navigatorOn} onNavigator={toggleNavigator} onShortcuts={openHelp}
+          prevCase={prevCase ? { href: href({ page: 'review', caseId: prevCase.case_id }), label: prevCase.slide_id } : null}
+          nextCase={nextCase ? { href: href({ page: 'review', caseId: nextCase.case_id }), label: nextCase.slide_id } : null} />
 
         {!detail ? (
           <div className="review-empty">
             {selected ? (
-              error ? <EmptyState icon={TriangleAlert} tone="warning" title="This case could not be opened">{error}</EmptyState>
+              error ? <EmptyState icon={TriangleAlert} tone="warning" title="This case could not be opened"
+                action={<ButtonLink href={href({ page: 'cases' })} icon={ListChecks}>Back to cases</ButtonLink>}>{error}</EmptyState>
                 : <EmptyState icon={Microscope} title="Loading slide…">Opening <span className="mono">{selected.replace('case_', '')}</span>.</EmptyState>
             ) : (
               <EmptyState icon={Microscope} title="No case open"
@@ -523,26 +581,47 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
         ) : (
           <>
             <div className="viewer-wrap">
-              <SlideViewer detail={detail} layers={layerSpecs} boxes={boxes} focus={focus} follow={replay.follow}
+              <SlideViewer detail={detail} layers={layerSpecs} boxes={boxes} focus={focus} follow={replay.follow} minMag={minMag}
                 fixation={replay.fix} onViewport={onViewport} onClickPoint={onClickPoint} onStatus={setVStatus} controls={controls}
                 onBoxClick={(r) => r.kind === 'unseen' ? jump(r, `alert:${r.region_id}`) : selected && loadEvidence(selected, read, { tile: r.peak_tile_id ?? undefined })} />
+              {targets.length > 0 && (
+                <div className="region-pill" role="group" aria-label="Highlighted regions">
+                  <button type="button" className="pill-btn" aria-label="Previous highlighted region (K)" title="Previous (K)" onClick={() => stepTarget(-1)}><ChevronLeft size={14} aria-hidden /></button>
+                  <span className="pill-text num" aria-live="polite">
+                    {targetIdx >= 0 ? targets[targetIdx].label : 'Highlighted regions'} <span className="muted">{targetIdx >= 0 ? targetIdx + 1 : '–'}/{targets.length}</span>
+                  </span>
+                  <button type="button" className="pill-btn" aria-label="Next highlighted region (J)" title="Next (J)" onClick={() => stepTarget(1)}><ChevronRight size={14} aria-hidden /></button>
+                  {inspectDim && <button type="button" className="pill-link" onClick={() => setInspectDim(false)} title="Overlays are dimmed so you can judge the tissue">Overlays dimmed · restore</button>}
+                </div>
+              )}
+              {toast && (
+                <div className={`toast ${toast.tone === 'warn' ? 'is-warn' : ''}`} role={toast.tone === 'warn' ? 'alert' : 'status'}>
+                  {toast.tone === 'warn' ? <TriangleAlert size={14} aria-hidden /> : <Info size={14} aria-hidden />}
+                  <span>{toast.text}</span>
+                  <button type="button" className="toast-x" aria-label="Dismiss" onClick={() => setToast(null)}><X size={14} aria-hidden /></button>
+                </div>
+              )}
+              {error && <div className="viewer-status is-error" role="alert"><TriangleAlert size={14} aria-hidden /> {error}</div>}
+              {detail.problems.length > 0 && <div className="viewer-status is-warn" role="status"><TriangleAlert size={14} aria-hidden /> {detail.problems[0]}</div>}
+              {!detail.dzi_url && <div className="viewer-status" role="status"><Info size={14} aria-hidden /> Whole-slide file not on this machine: showing the thumbnail.</div>}
               {vStatus.state === 'loading' && <div className="viewer-status" role="status"><span className="spinner" aria-hidden /> Loading slide…</div>}
               {vStatus.state === 'error' && <div className="viewer-status is-error" role="alert"><TriangleAlert size={16} aria-hidden /> {vStatus.message}</div>}
               {vStatus.state === 'ready' && vStatus.tileErrors > 0 && (
                 <div className="viewer-status is-warn" role="status"><TriangleAlert size={14} aria-hidden /> {vStatus.tileErrors} image tile{vStatus.tileErrors === 1 ? '' : 's'} failed to load; some areas may look blank.</div>
               )}
-              {(layers.coverage && coverage && !allHidden) || (evidenceVisible && layers.risk && !allHidden && !replay.active) ? (
+              {!allHidden && ((layers.coverage && coverage) || (evidenceVisible && layers.risk && !replay.active)) ? (
                 <div className="legend" aria-label="Overlay legend">
-                  {evidenceVisible && layers.risk && !replay.active && <span><span className="sw sw-risk" />Tumour probe score (low→high)</span>}
-                  {layers.coverage && coverage && <span><span className="sw sw-cov" />Not yet viewed (shaded)</span>}
+                  {evidenceVisible && layers.risk && !replay.active && <span><span className="sw sw-risk" />Probe score</span>}
+                  {layers.coverage && coverage && <span><span className="sw sw-cov" />Not yet viewed</span>}
                 </div>
               ) : null}
               {showHelp && <ShortcutHelp onClose={() => setShowHelp(false)} />}
-              {!showHelp && <button type="button" className="shortcut-hint xs" onClick={() => setShowHelp(true)}>Press <kbd>?</kbd> for shortcuts</button>}
+              {!showHelp && !hintSeen && <button type="button" className="shortcut-hint xs" onClick={openHelp}>Press <kbd>?</kbd> for shortcuts</button>}
             </div>
             {!replay.active && read && (
-              <DecisionBar wf={wf} read={read} signout={signout} busy={busy}
-                onInitial={recordInitial} onRunCheck={runCheck} onFinal={recordFinal}
+              <DecisionBar wf={wf} read={read} busy={busy} readOnly={readOnly} unrevisited={unrevisited}
+                onInitial={recordInitial} onRunCheck={runCheck} onFinal={recordFinal} onNewRead={startNewRead}
+                onGoRegion={(r) => jump(r, `alert:${r.region_id}`)}
                 nextHref={nextOpen ? href({ page: 'review', caseId: nextOpen.case_id }) : null} />
             )}
           </>
@@ -552,28 +631,31 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
       {showSide && (
         <aside className="review-side" aria-label="AI evidence and review">
           <div className="resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize AI panel"
-            aria-valuemin={300} aria-valuemax={560} aria-valuenow={sideW} tabIndex={0}
+            aria-valuemin={300} aria-valuemax={560} aria-valuenow={effSideW} tabIndex={0}
             onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={() => { dragging.current = null }} onKeyDown={onResizeKey} />
           {detail ? (
             <>
               <Tabs tabs={tabs} value={tab} onChange={(t) => setTab(t as TabId)} label="AI evidence and review" idPrefix="rv" />
               <div className="side-body" role="tabpanel" id="rv-panel" aria-labelledby={`rv-tab-${tab}`} tabIndex={0}>
                 {tab === 'evidence' && (
-                  <EvidenceTab ev={ev} loading={evLoading} replaying={replay.active} evidenceRegions={evRegions} onJump={jump} activeTarget={activeTarget} />
+                  <EvidenceTab ev={ev} loading={evLoading} replaying={replay.active} evidenceRegions={evRegions} onJump={jump}
+                    activeTarget={activeTarget} evalDocs={evalDocs} />
                 )}
                 {tab === 'unseen' && (
-                  <UnseenTab coverage={coverage} signout={signout} onJump={jump} activeAlert={activeTarget} zoomMag={zoomMag}
-                    canRunCheck={!!read?.initial_decision && !busy && !replay.active} onRunCheck={runCheck} replayActive={replay.active}
+                  <UnseenTab coverage={coverage} latest={latestCheck} alertCheck={alertCheck} onJump={jump} activeAlert={activeTarget} zoomMag={zoomMag}
+                    canRunCheck={!!read?.initial_decision && !busy && !replay.active && !readOnly} onRunCheck={runCheck} replayActive={replay.active}
+                    finalDecision={confirmed ? read?.final_decision ?? null : null}
                     replay={<ReplayPanel caseId={detail.case_id} onStep={onReplayStep} onStart={onReplayStart} onStop={onReplayStop}
-                      locked={!read || (read.review_mode === 'blind' && !read.initial_decision)} />} />
+                      locked={!read || !read.initial_decision} />} />
                 )}
                 {tab === 'model' && (
                   <ModelTab detail={detail} ev={replay.active ? null : ev} disputed={disputed} cohortRank={cohort} evalResult={evalResult}
                     onJump={jump} disagreementLayer={layers.disagreement} onToggleLayer={(on) => toggleLayer('disagreement', on)} activeTarget={activeTarget} />
                 )}
                 {tab === 'decision' && (
-                  <DecisionTab wf={wf} read={read} signout={signout} rec={replay.active ? null : rec} tierSlow={detail.tier === 'slow'}
-                    routingSignal={detail.routing_signal} extraReads={extraReads} onSecondRead={secondRead} />
+                  <DecisionTab wf={wf} read={read} latest={latestCheck} alertCheck={alertCheck} rec={replay.active ? null : rec} tierSlow={detail.tier === 'slow'}
+                    routingSignal={detail.routing_signal} extraReads={extraReads} onSecondRead={secondRead} confirmed={confirmed}
+                    priorExposure={priorExposure} readOnly={readOnly} />
                 )}
               </div>
             </>
@@ -583,4 +665,3 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     </div>
   )
 }
-

@@ -40,3 +40,13 @@ export function relativeTime(iso: string | null | undefined, short = false, now 
 
 export const absoluteTime = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : ''
+
+/** Share as a percentage that never rounds a non-zero value to 0% or a non-full value to 100%. */
+export function share(v: number | null | undefined): string {
+  if (v === null || v === undefined || Number.isNaN(v)) return '—'
+  if (v <= 0) return '0%'
+  if (v >= 1) return '100%'
+  if (v < 0.01) return '<1%'
+  if (v > 0.99) return '>99%'
+  return `${Math.round(v * 100)}%`
+}

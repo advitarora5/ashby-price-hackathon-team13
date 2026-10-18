@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, CircleCheck, CircleMinus, Info, TriangleAlert } from 'lucide-react'
 import type { EvalDoc, EvalHeadline } from '../types'
-import { RESEARCH_ORDER } from '../lib/research'
+import { RESEARCH_ORDER, RESEARCH_QUESTIONS } from '../lib/research'
 import EmptyState, { SkeletonRows } from './ui/EmptyState'
 
 const STATUS_ICON = { pass: CircleCheck, fail: CircleMinus, info: Info } as const
@@ -38,7 +38,7 @@ export default function EvalView({ docs, error }: { docs: Record<string, EvalDoc
       {entries.map(([key, d]) => (
         <article key={key} className="panel eval-card" aria-labelledby={`eval-${key}`}>
           <div className="eval-head">
-            <h3 id={`eval-${key}`}>{d.title ?? key}</h3>
+            <h3 id={`eval-${key}`}>{RESEARCH_QUESTIONS[key] ?? d.title ?? key}</h3>
             {d.measure && <span className="tag">{d.measure}</span>}
           </div>
           {d.dataset && <div className="eval-dataset"><span className="muted">Dataset:</span> {d.dataset}</div>}

@@ -30,7 +30,7 @@ function tileVerdict(ev: Evidence): Verdict {
   }
   const p = Math.round(ev.disagreement * 100)
   if (ev.disagreement >= DISAGREE_AT) return { label: 'Models disagree', tone: 'warning', icon: GitCompareArrows, detail: `More disagreement than ${p}% of reference tiles (top-15% band).` }
-  return { label: 'Models broadly agree', tone: 'success', icon: CircleCheck, detail: `Disagreement at the ${p}th percentile of reference tiles (below the top-15% band).` }
+  return { label: 'Models broadly agree', tone: 'neutral', icon: CircleCheck, detail: `Disagreement at the ${p}th percentile of reference tiles (below the top-15% band). Agreement does not mean the models are correct.` }
 }
 
 const models = (src: string | null) => src?.match(/\(([^)]+)\)/)?.[1].split(',').map((m) => m.trim()).map((m) => (m === 'plip' ? 'PLIP' : m === 'quiltnet' ? 'QuiltNet' : m)) ?? []
@@ -82,7 +82,7 @@ export default function ModelTab({ detail, ev, disputed, cohortRank, evalResult,
             {disputed.slice(0, 5).map((r) => (
               <button type="button" key={r.region_id} className={`region-item disputed ${activeTarget === r.region_id ? 'is-active' : ''}`}
                 onClick={() => onJump(r, `disputed:${r.region_id}`)}>
-                <span className="num">#{r.rank}</span><span className="num">rank {score(r.disagreement ?? r.risk)}</span><span className="muted num">{r.n_tiles} tiles</span>
+                <span className="num">#{r.rank}</span><span className="num" title="Disagreement percentile vs reference tiles">P{Math.min(99, Math.round((r.disagreement ?? 0) * 100))}</span><span className="muted num">{r.n_tiles} tiles</span>
               </button>
             ))}
           </div>
