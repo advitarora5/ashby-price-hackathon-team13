@@ -17,7 +17,10 @@ button { font: inherit; cursor: pointer; }
 .top nav button.on { color: #fff; background: #1f2937; }
 .toggle { font-size: 13px; display: flex; gap: 6px; align-items: center; }
 .disclaimer { margin-left: auto; font-size: 12px; color: #9ca3af; }
-.workspace { flex: 1; display: grid; grid-template-columns: 250px 1fr 400px; min-height: 0; }
+.workspace { flex: 1; display: grid; min-height: 0; }
+.dock { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.dock > .queue { flex: 1; min-height: 0; }
+.dock.collapsed, .side.collapsed { display: none; }
 .queue, .side { overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); }
 .side { border-right: 0; border-left: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; gap: 8px; background: var(--bg); }
 .queue ul { list-style: none; margin: 0; padding: 0 8px 8px; }
@@ -168,3 +171,27 @@ tr.hl td { background: var(--accent-soft); }
 .notes:focus, .verdict-note:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 .review .decision-bar { border-top: 0; }
 .btn.on { box-shadow: inset 0 0 0 2px currentColor; font-weight: 600; }
+.splitter { position: relative; flex: none; background: var(--line); touch-action: none; z-index: 5; }
+.splitter:hover, .splitter.active { background: var(--accent); }
+.split-v { width: 5px; cursor: col-resize; }
+.split-h { height: 5px; cursor: row-resize; }
+.split-toggle { position: absolute; display: flex; align-items: center; justify-content: center; padding: 0;
+  background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-size: 13px; line-height: 1; border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.split-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.split-v .split-toggle { width: 16px; height: 34px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+.split-h .split-toggle { width: 34px; height: 16px; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.notes-dock { overflow: hidden; flex: none; }
+.notes-dock .review { height: 100%; display: flex; flex-direction: column; border-top: 0; overflow-y: auto; }
+.notes-dock .notes { flex: 1 1 40px; resize: none; max-height: none; min-height: 40px; }
+.notes-dock .history { flex: none; }
+/* a collapsed panel's splitter sits on the screen edge: keep its button fully inside */
+.dock-left.collapsed .split-toggle { left: 0; transform: translate(0, -50%); }
+.dock-right.collapsed .split-toggle { left: auto; right: 0; transform: translate(0, -50%); }
+.dock-bottom.collapsed .split-toggle { top: auto; bottom: 0; transform: translate(-50%, 0); }
+/* hidden panels leave the grid, so pin every column explicitly */
+.workspace > .dock:first-child { grid-column: 1; }
+.workspace > .dock-left { grid-column: 2; }
+.workspace > .center { grid-column: 3; }
+.workspace > .dock-right { grid-column: 4; }
+.workspace > .side { grid-column: 5; }

@@ -7,17 +7,26 @@ import PolicyPanel from './components/PolicyPanel'
 import ReplayPanel from './components/ReplayPanel'
 import ReviewForm from './components/ReviewForm'
 import SlideViewer, { type LayerSpec, type ViewportReport } from './components/SlideViewer'
+import Splitter from './components/Splitter'
 import UnseenPanel from './components/UnseenPanel'
 import type {
   CaseDetail, CaseRow, Coverage, Decision, Evidence, PolicyRec, PolicySummary, Read, Rect, Region,
   ReplayStep, Signout, Verdict, ViewEvent,
 } from './types'
+import { usePanel } from './usePanel'
 import './styles.css'
 
 type Layers = { risk: boolean; disagreement: boolean; artifact: boolean; coverage: boolean; regions: boolean }
 
+const QUEUE = { initial: 250, min: 170, max: 480 }
+const SIDE = { initial: 400, min: 300, max: 760 }
+const NOTES = { initial: 190, min: 110, max: 640 }
+
 export default function App() {
   const [tab, setTab] = useState<'review' | 'eval'>('review')
+  const [queuePanel, setQueuePanel] = usePanel('queue', QUEUE)
+  const [sidePanel, setSidePanel] = usePanel('side', SIDE)
+  const [notesPanel, setNotesPanel] = usePanel('notes', NOTES)
   const [cases, setCases] = useState<CaseRow[]>([])
   const [casesErr, setCasesErr] = useState<string | null>(null)
   const [health, setHealth] = useState<{ provenance: string } | null>(null)
@@ -257,8 +266,13 @@ export default function App() {
         <div className="disclaimer">Experimental decision support · never a diagnosis{health ? ` · data: ${health.provenance}` : ''}</div>
       </header>
       {tab === 'eval' ? <EvalView /> : (
-        <main className="workspace">
-          <CaseQueue cases={cases} selected={selected} onSelect={openCase} error={casesErr} />
+        <main className="workspace" style={{ gridTemplateColumns:
+          `${queuePanel.open ? queuePanel.size : 0}px auto minmax(0, 1fr) auto ${sidePanel.open ? sidePanel.size : 0}px` }}>
+          {/* collapsed panels stay mounted (display: none) so drafts and local state survive */}
+          <div className={`dock ${queuePanel.open ? '' : 'collapsed'}`}>
+            <CaseQueue cases={cases} selected={selected} onSelect={openCase} error={casesErr} />
+          </div>
+          <Splitter dock="left" panel={queuePanel} setPanel={setQueuePanel} limits={QUEUE} label="case queue" />
           <section className="center">
             {!detail && <div className="empty">{selected ? (error ?? 'Loading slide…') : 'Select a case from the queue.'}</div>}
             {detail && (
@@ -291,13 +305,19 @@ export default function App() {
                   )}
                 </div>
                 {!replay.active && read && (
-                  <ReviewForm read={read} evidenceHidden={!read.evidence_visible} signedOutOnce={!!signout}
-                    onSaveNotes={saveNotes} onReveal={reveal} onDecide={decide} onSignOut={signOut} />
+                  <>
+                    <Splitter dock="bottom" panel={notesPanel} setPanel={setNotesPanel} limits={NOTES} label="notes panel" />
+                    <div className={`dock notes-dock ${notesPanel.open ? '' : 'collapsed'}`} style={{ height: notesPanel.size }}>
+                      <ReviewForm read={read} evidenceHidden={!read.evidence_visible} signedOutOnce={!!signout}
+                        onSaveNotes={saveNotes} onReveal={reveal} onDecide={decide} onSignOut={signOut} />
+                    </div>
+                  </>
                 )}
               </>
             )}
           </section>
-          <aside className="side">
+          <Splitter dock="right" panel={sidePanel} setPanel={setSidePanel} limits={SIDE} label="evidence panel" />
+          <aside className={`side ${sidePanel.open ? '' : 'collapsed'}`}>
             {detail && (
               <>
                 <EvidencePanel ev={replay.active ? null : ev} loading={evLoading} evidenceRegions={evRegions} disputed={disputed} onJump={jump}
