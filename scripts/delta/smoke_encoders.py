@@ -11,10 +11,13 @@ Random-noise cosines mean nothing; they only have to be finite.
 from __future__ import annotations
 
 import argparse
+import sys
 import time
 from pathlib import Path
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # run from anywhere: repo root on the path
 
 EXPECT_DIM = {"conch": 512, "musk": 1024}
 PROMPTS = ["an H&E image of metastatic tumor in a lymph node", "an H&E image of normal lymph node tissue"]
