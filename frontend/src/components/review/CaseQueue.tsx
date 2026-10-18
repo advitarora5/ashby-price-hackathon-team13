@@ -1,8 +1,8 @@
 import { TriangleAlert } from 'lucide-react'
-import type { CaseRow } from '../types'
-import { href } from '../lib/router'
-import { ARTIFACT_FLAG, REVIEW_STATUS, TIER, routingScore, statusOf } from '../lib/status'
-import { pct, score } from '../lib/format'
+import type { CaseRow } from '../../types'
+import { href } from '../../lib/router'
+import { ARTIFACT_FLAG, REVIEW_STATUS, TIER, routingScore, statusOf } from '../../lib/status'
+import { pct, score } from '../../lib/format'
 
 interface Props { cases: CaseRow[]; selected: string | null; onSelect: (id: string) => void; error: string | null }
 

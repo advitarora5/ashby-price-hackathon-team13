@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import OpenSeadragon from 'openseadragon'
-import type { CaseDetail, Rect, Region } from '../types'
+import type { CaseDetail, Rect, Region } from '../../types'
 
 /**
  * Coordinates: everything the backend sends is in level-0 slide pixels. OpenSeadragon
@@ -12,6 +12,15 @@ export interface LayerSpec { key: string; url: string; opacity: number }
 
 export interface ViewportReport { x: number; y: number; w: number; h: number; zoom: number }
 
+export type ViewerStatus = { state: 'loading' } | { state: 'ready'; tileErrors: number } | { state: 'error'; message: string }
+
+/** Imperative controls for toolbar buttons and keyboard shortcuts. */
+export interface ViewerControls {
+  zoomBy: (f: number) => void
+  home: () => void
+  setNavigator: (on: boolean) => void
+}
+
 interface Props {
   detail: CaseDetail
   layers: LayerSpec[]
@@ -22,6 +31,8 @@ interface Props {
   onViewport?: (v: ViewportReport) => void
   onClickPoint?: (x: number, y: number) => void
   onBoxClick?: (r: Region) => void
+  onStatus?: (s: ViewerStatus) => void
+  controls?: { current: ViewerControls | null }
 }
 
 export default function SlideViewer(p: Props) {
@@ -44,7 +55,8 @@ export default function SlideViewer(p: Props) {
       showNavigationControl: false,
       showNavigator: true,
       navigatorPosition: 'BOTTOM_RIGHT',
-      navigatorSizeRatio: 0.18,
+      navigatorSizeRatio: 0.15,
+      navigatorAutoFade: false,
       imageSmoothingEnabled: false,
       maxZoomPixelRatio: 2,
       visibilityRatio: 0.6,
@@ -54,6 +66,18 @@ export default function SlideViewer(p: Props) {
     })
     viewer.current = v
     layerItems.current = new Map()
+    let tileErrors = 0
+    cb.current.onStatus?.({ state: 'loading' })
+    v.addHandler('open', () => cb.current.onStatus?.({ state: 'ready', tileErrors }))
+    v.addHandler('open-failed', (e) => cb.current.onStatus?.({ state: 'error', message: String((e as unknown as { message?: string }).message ?? 'The slide image could not be opened.') }))
+    v.addHandler('tile-load-failed', () => { tileErrors += 1; if (tileErrors === 1 || tileErrors % 10 === 0) cb.current.onStatus?.({ state: 'ready', tileErrors }) })
+    if (cb.current.controls) {
+      cb.current.controls.current = {
+        zoomBy: (f) => { v.viewport.zoomBy(f); v.viewport.applyConstraints() },
+        home: () => v.viewport.goHome(),
+        setNavigator: (on) => { const el = (v.navigator as unknown as { element?: HTMLElement })?.element; if (el) el.style.display = on ? '' : 'none' },
+      }
+    }
     let last = 0
     let timer: number | undefined
     const report = () => {
@@ -69,12 +93,17 @@ export default function SlideViewer(p: Props) {
     }
     v.addHandler('viewport-change', throttled)
     v.addHandler('open', report)
+    // our shortcuts own R/F; stop OpenSeadragon rotating or flipping the slide on those keys
+    v.addHandler('canvas-key', (e) => {
+      const k = (e as unknown as { originalEvent: KeyboardEvent }).originalEvent?.key
+      if (k && /^[rRfF]$/.test(k)) (e as unknown as { preventDefaultAction: boolean }).preventDefaultAction = true
+    })
     v.addHandler('canvas-click', (e) => {
       if (!e.quick) return
       const pt = v.viewport.pointFromPixel(e.position)
       cb.current.onClickPoint?.(pt.x * W, pt.y * W)
     })
-    return () => { window.clearTimeout(timer); v.destroy(); viewer.current = null }
+    return () => { window.clearTimeout(timer); v.destroy(); viewer.current = null; if (cb.current.controls) cb.current.controls.current = null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.detail.case_id])
 
@@ -119,6 +148,10 @@ export default function SlideViewer(p: Props) {
         const d = document.createElement('div')
         d.className = `region-box tone-${b.tone}`
         d.title = b.label
+        if (b.tone !== 'selected') {
+          d.setAttribute('role', 'button'); d.tabIndex = 0; d.setAttribute('aria-label', b.label || `${b.region.kind} region ${b.region.rank}`)
+          d.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cb.current.onBoxClick?.(b.region) } })
+        }
         const tag = document.createElement('span')
         tag.textContent = b.label
         d.appendChild(tag)
@@ -157,5 +190,5 @@ export default function SlideViewer(p: Props) {
     v.viewport.fitBounds(new OpenSeadragon.Rect(x / W, y / W, w / W, h / W), false)
   }, [p.follow, W])
 
-  return <div ref={el} className="osd" />
+  return <div ref={el} className="osd" role="application" aria-label={`Slide ${p.detail.slide_id}: drag to pan, scroll to zoom`} />
 }

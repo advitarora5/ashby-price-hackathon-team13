@@ -41,6 +41,7 @@ export default function App() {
     return v === null ? window.innerWidth < 1100 : v === '1'
   })
   const [reviewCaseId, setReviewCaseId] = useState<string | null>(null)
+  const [focusMode, setFocusMode] = useState(false)
   const [visited, setVisited] = useState<Set<Page>>(() => new Set([route.page]))
 
   const refreshCases = useCallback(() => {
@@ -79,7 +80,7 @@ export default function App() {
   const show = (p: Page) => route.page === p
 
   return (
-    <div className={`app-shell ${navCollapsed ? 'nav-collapsed' : ''}`}>
+    <div className={`app-shell ${navCollapsed ? 'nav-collapsed' : ''} ${focusMode && route.page === 'review' ? 'is-focus' : ''}`}>
       <a className="skip-link" href="#main">Skip to content</a>
       <Sidebar route={route} collapsed={navCollapsed} onToggle={toggleNav} reviewCaseId={reviewCaseId} reviewSlideId={reviewSlide}
         counts={{ needsAttention: attention }} provenance={health?.provenance ?? null} blindAll={blindAll} />
@@ -100,7 +101,7 @@ export default function App() {
           <div className="page-host" hidden={!show('review')}>
             <Suspense fallback={<div className="review-empty"><EmptyState title="Loading slide viewer…" /></div>}>
               <SlideReviewPage caseId={reviewCaseId} visible={show('review')} cases={cases} casesErr={casesErr} blindAll={blindAll}
-                summary={summary} onCasesChanged={refreshCases} onSelectCase={openCase} />
+                evalDocs={evalDocs} onCasesChanged={refreshCases} onSelectCase={openCase} focusMode={focusMode} onFocusMode={setFocusMode} />
             </Suspense>
           </div>
         )}

@@ -1,4 +1,4 @@
-import type { Exemplars as Ex } from '../types'
+import type { Exemplars as Ex } from '../../types'
 
 export default function Exemplars({ ex, title = 'Similar labelled tiles (other slides)' }: { ex: Ex | null | undefined; title?: string }) {
   if (!ex) return null

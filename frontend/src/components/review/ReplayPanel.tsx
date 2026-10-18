@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { api } from '../api'
-import type { RecordedRead, ReplayStep } from '../types'
+import { api } from '../../api'
+import type { RecordedRead, ReplayStep } from '../../types'
 import { Pause, Play, Shuffle, Square, TriangleAlert } from 'lucide-react'
-import { Button } from './ui/Button'
+import { Button } from '../ui/Button'
 
 interface Props {
   caseId: string
@@ -59,11 +59,8 @@ export default function ReplayPanel({ caseId, onStep, onStart, onStop, locked }:
 
   const cur = reads.find((r) => r.read_id === sel)
   return (
-    <section className="side-panel" aria-labelledby="replay-title">
-      <div className="side-panel-head">
-        <h2 id="replay-title">Replay a recorded read</h2>
-        <span className="muted xs">PathoGaze eye-tracking through the live coverage engine</span>
-      </div>
+    <div className="replay">
+      <p className="xs muted">Replays a recorded PathoGaze eye-tracking read through the live coverage engine. AI overlays are hidden during replay.</p>
       {locked ? (
         <p className="small muted">
           {reads.length > 0 ? `${reads.length} recorded read${reads.length === 1 ? '' : 's'} available. ` : ''}
@@ -109,6 +106,6 @@ export default function ReplayPanel({ caseId, onStep, onStart, onStop, locked }:
         </>
       )}
       </>}
-    </section>
+    </div>
   )
 }
