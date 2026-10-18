@@ -6,7 +6,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 
 from secondlook.api.schemas import PolicyOut
-from secondlook.api.services.common import audit, case_row, read_row
+from secondlook.api.services.common import audit, case_row, evidence_gate, read_row
 from secondlook.api.store import Store, get_store
 from secondlook.config import REGION_RISK_THRESHOLD
 from secondlook.core.policy import recommend
@@ -28,6 +28,9 @@ def read_policy(read_id: str, store: Store = Depends(get_store)):
         decision = read["final_decision"] or read["initial_decision"]
         if decision is None:
             raise HTTPException(409, "record an assessment before asking for a review recommendation")
+        visible, why = evidence_gate(case, read)
+        if not visible:  # the recommendation reveals the AI case flag, so it stays hidden like the rest of the evidence
+            raise HTTPException(403, why)
         th = store.thresholds().get("ai_case_cutoff")
         cutoff = th["value"] if isinstance(th, dict) else th
         src = (th.get("source") if isinstance(th, dict) else "thresholds.json") if th is not None else None
