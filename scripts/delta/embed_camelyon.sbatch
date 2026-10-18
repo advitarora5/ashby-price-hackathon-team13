@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=sl-embed
-#SBATCH --partition=gpuA40x4
+#SBATCH --partition=gpuA100x4
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=64g
+#SBATCH --mem=60g
 #SBATCH --time=02:00:00
-# usage: sbatch --account=xxxx --export=ALL,ACCOUNT=xxxx,SLIDES="tumor_001 tumor_002" scripts/delta/embed_camelyon.sbatch
+# usage: sbatch --account=bfqi-delta-gpu --export=ALL,SLIDES="tumor_001 tumor_002" scripts/delta/embed_camelyon.sbatch
 # Downloads, embeds and then deletes each slide (one at a time, quota-safe).
 source scripts/delta/common.sh
 for s in $SLIDES; do

@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=sl-nct-prostate
-#SBATCH --partition=gpuA40x4
+#SBATCH --partition=gpuA100x4
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=64g
+#SBATCH --mem=60g
 #SBATCH --time=02:00:00
 source scripts/delta/common.sh
 python -m secondlook.pipeline.run_nct all --models conch musk colorhist imagenet

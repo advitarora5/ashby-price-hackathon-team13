@@ -21,7 +21,7 @@ MODEL_VERSIONS = {
     "quiltnet": "hf-hub:wisdomik/QuiltNet-B-32",
     "plip": "hf:vinid/plip",
     "pathgen": "hf:jamessyx/PathGen-CLIP/pathgenclip.pt (open_clip ViT-B-16)",
-    "conch": "hf:MahmoodLab/conch (conch_ViT-B-16)",
+    "conch": "hf:MahmoodLab/CONCH (conch_ViT-B-16)",
     "musk": "hf:xiangjx/musk (musk_large_patch16_384)",
     "imagenet": "torchvision:vit_b_16/IMAGENET1K_V1",
     "colorhist": "rgb_hist_8x8x8_hellinger_v1",
@@ -180,7 +180,7 @@ class ConchEncoder(_TorchVisionEncoder):
 
         self.name = "conch"
         self.device = _device()
-        ckpt = os.environ.get("SECONDLOOK_CONCH_WEIGHTS") or "hf_hub:MahmoodLab/conch"
+        ckpt = os.environ.get("SECONDLOOK_CONCH_WEIGHTS") or "hf_hub:MahmoodLab/CONCH"
         model, _ = create_model_from_pretrained("conch_ViT-B-16", checkpoint_path=ckpt, hf_auth_token=_hf_token())
         model.eval().to(self.device)
         if self.device == "cuda":
@@ -223,6 +223,7 @@ class MuskEncoder(_TorchVisionEncoder):
         from pathlib import Path
 
         import musk
+        from huggingface_hub import hf_hub_download
         from musk import modeling, utils  # noqa: F401  (modeling registers the timm architecture)
         from timm.models import create_model
         from transformers import XLMRobertaTokenizer
@@ -230,14 +231,19 @@ class MuskEncoder(_TorchVisionEncoder):
         self.name = "musk"
         self.device = _device()
         model = create_model("musk_large_patch16_384")
-        ckpt = os.environ.get("SECONDLOOK_MUSK_WEIGHTS") or "hf_hub:xiangjx/musk"
+        # a local path: MUSK's own "hf_hub:" loader force-downloads 3.7 GB into ~/.cache every time
+        ckpt = os.environ.get("SECONDLOOK_MUSK_WEIGHTS") or hf_hub_download(
+            "xiangjx/musk", "model.safetensors", token=_hf_token())
         utils.load_model_and_may_interpolate(ckpt, model, "model|module", "")
         model.eval().to(self.device)
         if self.device == "cuda":
             model = model.half()
         self.model = model
-        spm = os.environ.get("SECONDLOOK_MUSK_TOKENIZER") or str(Path(musk.__file__).parent / "models" / "tokenizer.spm")
-        self.tokenizer = XLMRobertaTokenizer(spm)
+        # pip installs only the .py files; the tokenizer also ships in the HF repo
+        spm = Path(musk.__file__).parent / "models" / "tokenizer.spm"
+        if not spm.exists():
+            spm = hf_hub_download("xiangjx/musk", "tokenizer.spm", token=_hf_token())
+        self.tokenizer = XLMRobertaTokenizer(str(spm))
 
     def encode_images(self, batch):
         import torch
