@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from secondlook.config import NCT_CLASSES, PRIMARY_MODEL, RAW_DIR, WORK_DIR, bundle_paths
+from secondlook.config import NCT_CLASSES, PATHOLOGY_MODELS, PRIMARY_MODEL, RAW_DIR, WORK_DIR, bundle_paths
 from secondlook.store.arrays import read_matrix, read_parquet, write_matrix, write_parquet
 
 NCT_RAW = RAW_DIR / "nct"
@@ -100,7 +100,7 @@ def stage_train(models, max_train: int | None = None):
     paths = bundle_paths()
     proto = protocol()
     _, feats = load_features()
-    if not all(load_text_bank(paths, m) for m in models if m in ("quiltnet", "plip", "pathgen")):
+    if not all(load_text_bank(paths, m) for m in models if m in PATHOLOGY_MODELS):
         build_text_banks(models, paths)
     cal = Calibrators(paths.models_dir)
     report = {"protocol": proto, "max_train": max_train, "models": {}}

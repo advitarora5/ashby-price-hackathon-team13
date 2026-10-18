@@ -1,7 +1,7 @@
 #!/bin/bash
 # CPU-only: run on a CPU node or the laptop after copying WORK + bundle.
 source scripts/delta/common.sh
-python -m secondlook.pipeline.run_camelyon train --models quiltnet plip pathgen colorhist
+python -m secondlook.pipeline.run_camelyon train --models conch musk colorhist
 python -m secondlook.pipeline.run_camelyon score $(ls "$SECONDLOOK_DATA/work/camelyon16" | grep '^test_')
 python -m secondlook.pipeline.ingest pathogaze
 python -m secondlook.pipeline.ingest crowdgleason
