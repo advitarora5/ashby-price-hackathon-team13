@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import type { Decision, NoteVersion, Read } from '../types'
 
@@ -20,7 +20,24 @@ export default function ReviewForm({ read, evidenceHidden, signedOutOnce, onSave
   const [pending, setPending] = useState<Decision | null>(read.initial_decision)
   const [busy, setBusy] = useState(false)
   const [history, setHistory] = useState<NoteVersion[] | null>(null)
-  useEffect(() => { setDraft(read.notes ?? ''); setPending(read.initial_decision); setHistory(null) }, [read.read_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  // what is typed vs what the server has, for this read: unsaved notes are saved automatically
+  // when the reader switches case, reloads or closes the page (each save is a new version)
+  const pendingSave = useRef({ readId: read.read_id, text: read.notes ?? '', saved: read.notes ?? '' })
+  useEffect(() => {
+    setDraft(read.notes ?? ''); setPending(read.initial_decision); setHistory(null)
+    pendingSave.current = { readId: read.read_id, text: read.notes ?? '', saved: read.notes ?? '' }
+    const readId = read.read_id
+    const saveIfDirty = () => {
+      const p = pendingSave.current
+      if (p.readId === readId && p.text.trim() && p.text !== p.saved) {
+        p.saved = p.text
+        api.saveNotesOnLeave(readId, p.text)
+      }
+    }
+    window.addEventListener('pagehide', saveIfDirty)
+    return () => { window.removeEventListener('pagehide', saveIfDirty); saveIfDirty() }
+  }, [read.read_id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { pendingSave.current.saved = read.notes ?? '' }, [read.notes])
   // keep an open history list current after each save
   useEffect(() => { if (history) api.history(read.read_id).then(setHistory).catch(() => undefined) }, [read.notes]) // eslint-disable-line react-hooks/exhaustive-deps
   const toggleHistory = () => {
@@ -57,7 +74,7 @@ export default function ReviewForm({ read, evidenceHidden, signedOutOnce, onSave
           ))}
         </ol>
       )}
-      <textarea className="notes" rows={4} value={draft} onChange={(e) => setDraft(e.target.value)}
+      <textarea className="notes" rows={4} value={draft} onChange={(e) => { setDraft(e.target.value); pendingSave.current.text = e.target.value }}
         placeholder={evidenceHidden ? 'Describe what you see before the AI evidence is shown…' : 'Full notes for this case…'} />
       <div className="decision-bar">
         {evidenceHidden ? (

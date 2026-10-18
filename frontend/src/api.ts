@@ -55,6 +55,10 @@ export const api = {
   decision: (id: string, stage: string, decision: Decision) =>
     post<Read>(`/reads/${id}/decision`, { stage, decision, session_id: SESSION_ID }),
   saveNotes: (id: string, notes: string) => put<Read>(`/reads/${id}/notes`, { notes, session_id: SESSION_ID }),
+  // survives the page being closed or the case being switched mid-request
+  saveNotesOnLeave: (id: string, notes: string) =>
+    fetch(`/api/reads/${id}/notes`, { method: 'PUT', keepalive: true, headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes, session_id: SESSION_ID }) }).catch(() => undefined),
   history: (id: string, feature_id = '') => req<NoteVersion[]>(`/reads/${id}/history${q({ feature_id })}`),
   reviewFeature: (id: string, feature: string, verdict: Verdict, note: string) =>
     put<Read>(`/reads/${id}/features/${feature}`, { verdict, note, session_id: SESSION_ID }),
