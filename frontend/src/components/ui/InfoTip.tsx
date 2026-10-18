@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+
 import { createPortal } from 'react-dom'
 import { Info } from 'lucide-react'
 
@@ -13,7 +14,12 @@ export default function InfoTip({ label, children, icon }: Props) {
   const [pinned, setPinned] = useState(false)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const btn = useRef<HTMLButtonElement>(null)
+  const tip = useRef<HTMLDivElement>(null)
+  const closeT = useRef<number | undefined>(undefined)
   const id = useId()
+  // WCAG 1.4.13: hovering from the trigger onto the tooltip keeps it open
+  const openNow = () => { window.clearTimeout(closeT.current); setOpen(true) }
+  const closeSoon = () => { window.clearTimeout(closeT.current); if (!pinned) closeT.current = window.setTimeout(() => setOpen(false), 180) }
 
   useLayoutEffect(() => {
     if (!open || !btn.current) return
@@ -27,7 +33,10 @@ export default function InfoTip({ label, children, icon }: Props) {
   useEffect(() => {
     if (!open) return
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { setOpen(false); setPinned(false) } }
-    const down = (e: PointerEvent) => { if (!btn.current?.contains(e.target as Node)) { setOpen(false); setPinned(false) } }
+    const down = (e: PointerEvent) => {
+      const t = e.target as Node
+      if (!btn.current?.contains(t) && !tip.current?.contains(t)) { setOpen(false); setPinned(false) }
+    }
     window.addEventListener('keydown', key)
     window.addEventListener('pointerdown', down)
     return () => { window.removeEventListener('keydown', key); window.removeEventListener('pointerdown', down) }
@@ -38,12 +47,13 @@ export default function InfoTip({ label, children, icon }: Props) {
       <button ref={btn} type="button" className="infotip-btn" aria-label={label} aria-describedby={open ? id : undefined}
         aria-expanded={open}
         onClick={(e) => { e.stopPropagation(); setPinned(!pinned); setOpen(!pinned) }}
-        onMouseEnter={() => setOpen(true)} onMouseLeave={() => { if (!pinned) setOpen(false) }}
+        onMouseEnter={openNow} onMouseLeave={closeSoon}
         onFocus={() => setOpen(true)} onBlur={() => { setOpen(false); setPinned(false) }}>
         {icon ?? <Info size={13} aria-hidden />}
       </button>
       {open && pos && createPortal(
-        <div role="tooltip" id={id} className="infotip" style={{ top: pos.top, left: pos.left }}>{children}</div>,
+        <div role="tooltip" id={id} ref={tip} className="infotip" style={{ top: pos.top, left: pos.left }}
+          onMouseEnter={openNow} onMouseLeave={closeSoon}>{children}</div>,
         document.body,
       )}
     </>

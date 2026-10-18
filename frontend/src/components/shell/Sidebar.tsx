@@ -42,7 +42,7 @@ export default function Sidebar({ route, collapsed, onToggle, reviewCaseId, revi
           )}
           {collapsed && <span className="sr-only">{it.label}</span>}
           {!collapsed && it.page === 'cases' && counts.needsAttention !== null && counts.needsAttention > 0 && (
-            <span className="nav-count num" title="Open slow-path cases">{counts.needsAttention}</span>
+            <span className="nav-count num" title="Slow path · open cases">{counts.needsAttention}<span className="sr-only"> slow-path cases open</span></span>
           )}
         </a>
       </li>
@@ -67,7 +67,7 @@ export default function Sidebar({ route, collapsed, onToggle, reviewCaseId, revi
         )}
         <div className="ruo" role="note">
           <FlaskConical size={14} aria-hidden />
-          {!collapsed ? <span>{BRAND.researchNotice}</span> : <span className="sr-only">{BRAND.researchNoticeLong}</span>}
+          {!collapsed ? <span>{BRAND.researchNotice}</span> : <span className="ruo-short" aria-label={BRAND.researchNoticeLong}>RUO</span>}
           <InfoTip label="About research use">
             <strong>{BRAND.researchNoticeLong}</strong>
             {provenance && <><br />Data: {provenance}.</>}

@@ -44,7 +44,7 @@ export default function EvidencePanel({ ev, loading, evidenceRegions, disputed, 
           <dl className="kv">
             <div>
               <dt>
-                Tumour probe score (tile, smoothed)
+                Uncalibrated tumour probe score (tile)
                 <InfoTip label="About the tumour probe score">
                   Output of a linear probe on foundation-model tile embeddings. It is uncalibrated: a relative 0–1 score, not the
                   probability that the tile contains tumour.{ev.tumor_prob_source ? <><br /><br />Source: {ev.tumor_prob_source}</> : null}

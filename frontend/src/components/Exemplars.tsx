@@ -15,7 +15,7 @@ export default function Exemplars({ ex, title = 'Similar labelled tiles (other s
               {ex[lab].map((e) => (
                 <figure key={e.exemplar_id}>
                   <img src={e.image_url} alt={`${lab} example from ${e.slide_id}`} loading="lazy" />
-                  <figcaption title={`similarity ${e.similarity.toFixed(2)}`}>{e.slide_id} · {e.similarity.toFixed(2)}</figcaption>
+                  <figcaption title={`${e.slide_id} · similarity ${e.similarity.toFixed(2)}`}>{e.slide_id} · {e.similarity.toFixed(2)}</figcaption>
                 </figure>
               ))}
             </div>

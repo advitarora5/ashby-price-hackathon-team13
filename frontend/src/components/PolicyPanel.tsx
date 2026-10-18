@@ -1,6 +1,5 @@
 import { CircleCheck, CircleMinus, CircleX, UserCheck, Users } from 'lucide-react'
 import type { Decision, PolicyRec, PolicySummary } from '../types'
-import PolicyCostTable from './PolicyCostTable'
 import { Button } from './ui/Button'
 
 interface Props {
@@ -75,10 +74,10 @@ export default function PolicyPanel({ rec, summary, tierSlow, routingSignal, onS
           <p className="xs muted">{rec.disclaimer}</p>
         </>
       )}
-      <details className="eff">
-        <summary className="small">What each reader policy costs (CrowdGleason prostate, expert reference)</summary>
-        <PolicyCostTable summary={summary} compact />
-      </details>
+      <p className="xs muted">
+        {summary?.available ? `What each reader policy costs (${summary.dataset ?? 'CrowdGleason'}, ${summary.runs.length} policies): ` : ''}
+        <a href="#/research">see Research Insights</a>.
+      </p>
     </section>
   )
 }

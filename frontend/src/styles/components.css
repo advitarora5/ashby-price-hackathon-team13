@@ -65,7 +65,7 @@
 @media (max-width: 640px) { .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* ---------- InfoTip ---------- */
-.infotip-btn { display: inline-grid; place-items: center; width: 20px; height: 20px; margin: -2px 0; padding: 0; border: 0; background: transparent; color: var(--c-text-2); border-radius: var(--r-pill); flex: none; }
+.infotip-btn { display: inline-grid; place-items: center; width: 24px; height: 24px; margin: -4px -2px; padding: 0; border: 0; background: transparent; color: var(--c-text-2); border-radius: var(--r-pill); flex: none; }
 .infotip-btn:hover, .infotip-btn[aria-expanded='true'] { color: var(--c-primary-strong); background: var(--c-primary-tint); }
 .infotip {
   position: fixed; z-index: var(--z-popover); width: 280px; padding: 10px 12px; border-radius: var(--r-md);
@@ -89,7 +89,8 @@
 .tabs-segmented .tab.is-selected .tab-count { background: var(--c-primary-tint); color: var(--c-primary-strong); }
 
 /* ---------- DataTable ---------- */
-.table-scroll { overflow: auto; min-width: 0; }
+.table-scroll { position: relative; overflow-x: clip; min-width: 0; container: table / inline-size; }
+.table-sortnote { padding: 6px 10px; border-bottom: 1px solid var(--c-border); background: var(--c-surface-2); }
 .data-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--fs-base); }
 .data-table th {
   position: sticky; top: 0; z-index: 1; background: var(--c-surface-2); text-align: left;
@@ -102,6 +103,7 @@
 .data-table tbody tr.is-clickable { cursor: pointer; }
 .data-table tbody tr.is-clickable:hover td { background: var(--c-surface-2); }
 .data-table tbody tr.is-selected td { background: var(--c-primary-tint); }
+.data-table tbody tr.is-selected .meter-track { background: var(--c-primary-tint-2); }
 .data-table tbody tr.is-selected td:first-child { box-shadow: inset 3px 0 0 var(--c-primary); }
 .data-table .align-right { text-align: right; }
 .data-table .align-center { text-align: center; }
@@ -112,17 +114,21 @@
 .th-sort.is-active { color: var(--c-primary-strong); }
 .th-sort-icon { opacity: 0.55; }
 .th-sort.is-active .th-sort-icon { opacity: 1; }
-@media (max-width: 1600px) { .hide-below-1600 { display: none; } }
-@media (max-width: 1280px) { .hide-below-1280 { display: none; } }
-@media (max-width: 1100px) { .hide-below-1100 { display: none; } }
+/* pinned action column: always reachable */
+.data-table .is-sticky { position: sticky; right: 0; z-index: 1; background: var(--c-surface); box-shadow: -8px 0 8px -8px rgba(32, 54, 74, 0.18); }
+.data-table th.is-sticky { z-index: 2; background: var(--c-surface-2); }
+.data-table tbody tr.is-clickable:hover td.is-sticky { background: var(--c-surface-2); }
+.data-table tbody tr.is-selected td.is-sticky { background: var(--c-primary-tint); }
 
 /* cells */
 .cell-case { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .cell-case .mono { font-weight: var(--fw-semibold); font-size: var(--fs-base); color: var(--c-text); text-decoration: none; }
 .cell-case a.mono:hover { text-decoration: underline; }
-.cell-sub { font-size: var(--fs-xs); color: var(--c-text-2); white-space: nowrap; }
+.cell-sub { font-size: var(--fs-xs); color: var(--c-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cell-case { line-height: 1.25; }
 .meter { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.meter-rank { font-size: var(--fs-xs); color: var(--c-text-2); min-width: 26px; text-align: right; }
+@container table (max-width: 760px) { .meter-track { display: none; } }
 .meter-track { width: 44px; height: 6px; border-radius: var(--r-pill); background: var(--c-surface-sunken); overflow: hidden; }
 .meter-fill { display: block; height: 100%; background: var(--c-primary); border-radius: var(--r-pill); }
 .meter.secondary .meter-fill { background: var(--c-border-control); }
@@ -150,3 +156,5 @@
 .notice.danger { background: var(--c-red-tint); color: var(--c-red-ink); border-color: #efcfcf; }
 .notice.danger svg { color: var(--c-red); }
 .stat.tone-accent .stat-label svg { color: var(--c-teal); }
+.data-table.wrap-head th { white-space: normal; height: auto; padding-top: 6px; padding-bottom: 6px; line-height: 1.25; }
+.data-table.wrap-head td { white-space: normal; }

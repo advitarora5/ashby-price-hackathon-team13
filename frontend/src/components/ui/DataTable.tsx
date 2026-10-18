@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 import InfoTip from './InfoTip'
 
@@ -16,8 +16,12 @@ export interface Column<T> {
   align?: 'left' | 'right' | 'center'
   width?: string
   info?: ReactNode
-  /** Hide below this viewport width (px) via CSS class. */
-  hideBelow?: 1100 | 1280 | 1600
+  /** Approximate width the column needs (px, incl. padding). Used to decide which columns fit. */
+  minWidth?: number
+  /** Lower = more important. 0 = always shown. Columns are dropped from the highest number first. */
+  priority?: number
+  /** Keep this column pinned to the right edge (row actions). */
+  sticky?: boolean
 }
 
 interface Props<T> {
@@ -49,7 +53,48 @@ function compare(a: string | number | null, b: string | number | null): number {
  * (aria-sort on the <th>). Row click is a mouse convenience; every row must also contain a
  * focusable action (e.g. an Open link) so keyboard users are never stuck.
  */
+/** Which columns fit in `width`, keeping the most important ones (container-aware, not viewport-based). */
+function fitColumns<T>(cols: Column<T>[], width: number): Set<string> {
+  if (!width) return new Set(cols.map((c) => c.key))
+  const order = [...cols].sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0))
+  const keep = new Set<string>()
+  let used = 0
+  for (const c of order) {
+    const w = c.minWidth ?? 100
+    if ((c.priority ?? 0) === 0 || used + w <= width) { keep.add(c.key); used += w }
+  }
+  return keep
+}
+
 export default function DataTable<T>(p: Props<T>) {
+  const wrap = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(0)
+  useLayoutEffect(() => {
+    const el = wrap.current
+    if (!el) return
+    const ro = new ResizeObserver(([e]) => setWidth(Math.floor(e.contentRect.width)))
+    ro.observe(el)
+    setWidth(el.clientWidth)
+    return () => ro.disconnect()
+  }, [])
+  // first pass: estimated widths; second pass: if the rendered table still overflows, drop the
+  // next least important column until it fits (fonts, badges and locales vary)
+  const table = useRef<HTMLTableElement>(null)
+  const [extraDrop, setExtraDrop] = useState(0)
+  const estimated = useMemo(() => fitColumns(p.columns, width), [p.columns, width])
+  const droppable = useMemo(() => p.columns.filter((c) => estimated.has(c.key) && (c.priority ?? 0) > 0)
+    .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0)).map((c) => c.key), [p.columns, estimated])
+  const visible = useMemo(() => {
+    const v = new Set(estimated)
+    droppable.slice(0, extraDrop).forEach((k) => v.delete(k))
+    return v
+  }, [estimated, droppable, extraDrop])
+  useLayoutEffect(() => { setExtraDrop(0) }, [width, p.columns])
+  useLayoutEffect(() => {
+    const t = table.current, w = wrap.current
+    if (t && w && t.scrollWidth > w.clientWidth + 1 && extraDrop < droppable.length) setExtraDrop((d) => d + 1)
+  }, [extraDrop, droppable.length, visible, p.rows, width])
+  const cols = p.columns.filter((c) => visible.has(c.key))
   const [inner, setInner] = useState<SortState | null>(p.defaultSort ?? null)
   const sort = p.sort !== undefined ? p.sort : inner
   const setSort = (s: SortState | null) => { if (p.onSortChange) p.onSortChange(s); else setInner(s) }
@@ -77,19 +122,27 @@ export default function DataTable<T>(p: Props<T>) {
     else setSort(p.defaultSort ?? null)
   }
 
+  const hiddenSort = sort && !visible.has(sort.key) ? p.columns.find((c) => c.key === sort.key) : null
+
   return (
-    <div className="table-scroll">
-      <table className={`data-table ${p.dense ? 'dense' : ''}`}>
+    <div className="table-scroll" ref={wrap}>
+      {hiddenSort && (
+        <div className="table-sortnote small muted">
+          Sorted by {hiddenSort.header} ({sort!.dir === 'asc' ? 'ascending' : 'descending'}); column hidden at this width.{' '}
+          <button type="button" className="link-btn" onClick={() => setSort(p.defaultSort ?? null)}>Reset sort</button>
+        </div>
+      )}
+      <table ref={table} className={`data-table ${p.dense ? 'dense' : ''}`}>
         <caption className="sr-only">{p.caption}</caption>
         <thead>
           <tr>
-            {p.columns.map((c) => {
+            {cols.map((c) => {
               const active = sort?.key === c.key
               const ariaSort = active ? (sort!.dir === 'asc' ? 'ascending' : 'descending') : c.sortValue ? 'none' : undefined
               const Icon = active ? (sort!.dir === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
               return (
                 <th key={c.key} scope="col" aria-sort={ariaSort} style={{ width: c.width }}
-                  className={`align-${c.align ?? 'left'} ${c.hideBelow ? `hide-below-${c.hideBelow}` : ''}`}>
+                  className={`align-${c.align ?? 'left'} ${c.sticky ? 'is-sticky' : ''}`}>
                   <span className="th-inner">
                     {c.sortValue ? (
                       <button type="button" className={`th-sort ${active ? 'is-active' : ''}`} onClick={() => clickHeader(c)}>
@@ -112,8 +165,8 @@ export default function DataTable<T>(p: Props<T>) {
                 if ((e.target as HTMLElement).closest('a,button,input,select,label')) return
                 p.onRowClick!(r)
               } : undefined}>
-              {p.columns.map((c) => (
-                <td key={c.key} className={`align-${c.align ?? 'left'} ${c.hideBelow ? `hide-below-${c.hideBelow}` : ''}`}>{c.cell(r)}</td>
+              {cols.map((c) => (
+                <td key={c.key} className={`align-${c.align ?? 'left'} ${c.sticky ? 'is-sticky' : ''}`}>{c.cell(r)}</td>
               ))}
             </tr>
           ))}

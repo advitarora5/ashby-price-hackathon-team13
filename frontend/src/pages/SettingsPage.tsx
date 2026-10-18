@@ -4,6 +4,17 @@ import { SESSION_ID } from '../api'
 import { absoluteTime } from '../lib/format'
 import Panel from '../components/ui/Panel'
 
+/** Turn known provenance IDs into readable text; unknown IDs are shown as-is. */
+function humanSource(src?: string) {
+  if (!src) return ''
+  const m = src.match(/^pathogaze_fit:(\d+)_benign_reads:budgets_([\d.]+)_and_([\d.]+)$/)
+  if (m) return `fit on ${m[1]} PathoGaze benign reads (alert budgets ${m[2]} and ${m[3]} per read)`
+  const d = src.match(/^disagreement_eval (\w+): disagreement ([\d.]+) vs entropy ([\d.]+) \((\d+) slides?\)$/)
+  if (d) return `evaluation on ${d[1].toUpperCase()}: uncertainty (entropy) caught ${Math.round(+d[3] * 1000) / 10}% of model errors vs ${Math.round(+d[2] * 1000) / 10}% for disagreement (${d[4]} slides)`
+  if (src === 'default_unvalidated') return 'defaults, not fit on validation data'
+  return src
+}
+
 interface Props { blindAll: boolean; onBlindAll: (v: boolean) => void; health: Health | null }
 
 export default function SettingsPage({ blindAll, onBlindAll, health }: Props) {
@@ -43,10 +54,11 @@ export default function SettingsPage({ blindAll, onBlindAll, health }: Props) {
             <div><dt>Provenance</dt><dd>{health?.provenance ?? '—'}</dd></div>
             <div><dt>Cases in bundle</dt><dd className="num">{health?.cases ?? '—'}</dd></div>
             <div><dt>Bundle updated</dt><dd>{health?.manifest_updated ? absoluteTime(health.manifest_updated) : '—'}</dd></div>
-            <div><dt>Routing signal</dt><dd>{routing?.signal ?? '—'}{routing?.source && <span className="muted"> · {routing.source}</span>}</dd></div>
+            <div><dt>Routing signal</dt><dd>{routing?.signal === 'entropy' ? 'Model uncertainty (normalised entropy)' : routing?.signal ?? '—'}
+              {routing?.source && <div className="muted small" title={routing.source}>{humanSource(routing.source)}</div>}</dd></div>
             <div><dt>Sign-out light thresholds</dt><dd>
               {light ? <>amber ≥ <span className="num">{light.lo}</span>, red ≥ <span className="num">{light.hi}</span>
-                <span className="muted"> · {light.source}</span>{light.note && <div className="muted small">{light.note}</div>}</> : '—'}
+                <div className="muted small" title={light.source}>{humanSource(light.source)}</div></> : '—'}
             </dd></div>
             <div><dt>Session</dt><dd className="mono">{SESSION_ID}</dd></div>
           </dl>

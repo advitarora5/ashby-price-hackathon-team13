@@ -2,8 +2,16 @@ export const pct = (v: number | null | undefined, digits = 0) =>
   v === null || v === undefined || Number.isNaN(v) ? '—' : `${(v * 100).toFixed(digits)}%`
 
 /** Relative 0–1 scores (ranks, entropy) shown as plain decimals so they never read as probabilities. */
-export const score = (v: number | null | undefined) =>
-  v === null || v === undefined || Number.isNaN(v) ? '—' : v.toFixed(2)
+export const score = (v: number | null | undefined) => {
+  if (v === null || v === undefined || Number.isNaN(v)) return '—'
+  if (v > 0.99) return '>0.99' // never round an uncalibrated score up to certainty
+  if (v < 0.01) return '<0.01'
+  return v.toFixed(2)
+}
+
+/** Artifact share: one decimal so values either side of the 5% flag never look identical. */
+export const pct1 = (v: number | null | undefined) =>
+  v === null || v === undefined || Number.isNaN(v) ? '—' : `${(v * 100).toFixed(1)}%`
 
 export const titleCase = (s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 

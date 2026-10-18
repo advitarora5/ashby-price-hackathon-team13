@@ -68,4 +68,6 @@ export const api = {
   evalSummary: () => req<Record<string, EvalDoc>>('/eval/summary'),
   /** Existing GET /api/audit (ascending by event id); used read-only to derive last activity per case. */
   auditEvents: (limit = 20000) => req<AuditEvent[]>(`/audit${q({ limit })}`),
+  /** Audit events for one case (existing endpoint, filtered server-side). Used to find a read to resume. */
+  caseAudit: (case_id: string) => req<AuditEvent[]>(`/audit${q({ case_id, limit: 100000 })}`),
 }

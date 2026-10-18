@@ -17,7 +17,7 @@ export default function PolicyCostTable({ summary, compact }: { summary: PolicyS
   return (
     <>
       <div className="table-scroll">
-        <table className={`data-table ${compact ? 'dense' : ''}`}>
+        <table className={`data-table wrap-head ${compact ? "dense" : ""}`}>
           <caption className="sr-only">Human reads per 100 cases and agreement with the expert reference, by reader policy</caption>
           <thead>
             <tr>

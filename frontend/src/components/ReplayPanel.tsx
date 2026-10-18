@@ -9,9 +9,11 @@ interface Props {
   onStep: (s: ReplayStep) => void
   onStart: () => void
   onStop: () => void
+  /** Blind read awaiting the initial assessment: other readers' calls must not be shown yet. */
+  locked?: boolean
 }
 
-export default function ReplayPanel({ caseId, onStep, onStart, onStop }: Props) {
+export default function ReplayPanel({ caseId, onStep, onStart, onStop, locked }: Props) {
   const [reads, setReads] = useState<RecordedRead[]>([])
   const [sel, setSel] = useState<string>('')
   const [mode, setMode] = useState<'gaze' | 'viewport'>('gaze')
@@ -62,6 +64,12 @@ export default function ReplayPanel({ caseId, onStep, onStart, onStop }: Props) 
         <h2 id="replay-title">Replay a recorded read</h2>
         <span className="muted xs">PathoGaze eye-tracking through the live coverage engine</span>
       </div>
+      {locked ? (
+        <p className="small muted">
+          {reads.length > 0 ? `${reads.length} recorded read${reads.length === 1 ? '' : 's'} available. ` : ''}
+          Available after you record your initial assessment, because recorded reads show other readers' calls.
+        </p>
+      ) : <>
       {err && <div className="notice warn"><TriangleAlert size={14} aria-hidden />{err}</div>}
       {reads.length === 0 && !err && <p className="small muted">No recorded reads for this slide.</p>}
       {reads.length > 0 && (
@@ -100,6 +108,7 @@ export default function ReplayPanel({ caseId, onStep, onStart, onStop }: Props) 
           )}
         </>
       )}
+      </>}
     </section>
   )
 }

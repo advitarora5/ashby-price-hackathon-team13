@@ -3,6 +3,7 @@ import { api } from './api'
 import Sidebar from './components/shell/Sidebar'
 import { useRoute, type Page } from './lib/router'
 import { needsAttention } from './lib/status'
+import { deriveActivity, type CaseActivity } from './lib/activity'
 import { BRAND } from './brand'
 import OverviewPage from './pages/OverviewPage'
 import CasesPage from './pages/CasesPage'
@@ -33,7 +34,7 @@ export default function App() {
   const [summary, setSummary] = useState<PolicySummary | null>(null)
   const [evalDocs, setEvalDocs] = useState<Record<string, EvalDoc> | null>(null)
   const [evalErr, setEvalErr] = useState<string | null>(null)
-  const [lastActivity, setLastActivity] = useState<Record<string, string>>({})
+  const [activity, setActivity] = useState<Record<string, CaseActivity>>({})
   const [blindAll, setBlindAll] = useState(() => store.get('claripath.blindAll') === '1')
   const [navCollapsed, setNavCollapsed] = useState(() => {
     const v = store.get('claripath.navCollapsed')
@@ -48,11 +49,7 @@ export default function App() {
       .catch((e) => setCasesErr(`Backend unreachable: ${e.message}`))
       .finally(() => setCasesLoaded(true))
     // last activity per case, derived read-only from the existing audit log
-    api.auditEvents().then((events) => {
-      const m: Record<string, string> = {}
-      for (const e of events) if (e.case_id && (!m[e.case_id] || e.ts > m[e.case_id])) m[e.case_id] = e.ts
-      setLastActivity(m)
-    }).catch(() => undefined)
+    api.auditEvents().then((events) => setActivity(deriveActivity(events))).catch(() => undefined)
   }, [])
 
   useEffect(() => {
@@ -89,13 +86,13 @@ export default function App() {
       <main id="main" className="app-main" tabIndex={-1}>
         {visited.has('overview') && (
           <div className="page-host" hidden={!show('overview')}>
-            <OverviewPage cases={cases} loading={loading} error={casesErr} health={health} lastActivity={lastActivity}
+            <OverviewPage cases={cases} loading={loading} error={casesErr} health={health} activity={activity}
               evalDocs={evalDocs} evalErr={evalErr} currentCaseId={reviewCaseId} blindAll={blindAll} onOpen={openCase} />
           </div>
         )}
         {visited.has('cases') && (
           <div className="page-host" hidden={!show('cases')}>
-            <CasesPage cases={cases} loading={loading} error={casesErr} health={health} lastActivity={lastActivity}
+            <CasesPage cases={cases} loading={loading} error={casesErr} health={health} activity={activity}
               currentCaseId={reviewCaseId} onOpen={openCase} />
           </div>
         )}

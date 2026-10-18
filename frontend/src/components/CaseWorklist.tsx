@@ -1,10 +1,13 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ArrowRight, Inbox, Search, TriangleAlert } from 'lucide-react'
 import type { CaseRow, Health } from '../types'
+import type { CaseActivity } from '../lib/activity'
 import { href } from '../lib/router'
-import { ARTIFACT_FLAG, REVIEW_STATUS, matchesSegment, needsAttention, routingLabel, routingScore, type Segment } from '../lib/status'
-import { absoluteTime, pct, relativeTime, score, tissueLabel } from '../lib/format'
-import DataTable, { type Column } from './ui/DataTable'
+import {
+  ARTIFACT_FLAG, SEGMENT_LABEL, actionLabel, displayStatus, matchesSegment, needsAttention, routingLabel, routingScore, type Segment,
+} from '../lib/status'
+import { absoluteTime, pct1, relativeTime, score, tissueLabel } from '../lib/format'
+import DataTable, { type Column, type SortState } from './ui/DataTable'
 import StatusBadge from './ui/StatusBadge'
 import Tabs from './ui/Tabs'
 import { ButtonLink } from './ui/Button'
@@ -15,7 +18,7 @@ interface Props {
   cases: CaseRow[]
   loading: boolean
   error: string | null
-  lastActivity: Record<string, string>
+  activity: Record<string, CaseActivity>
   health: Health | null
   currentCaseId: string | null
   onOpen: (caseId: string) => void
@@ -23,21 +26,24 @@ interface Props {
   footer?: (shown: number, total: number) => ReactNode
 }
 
-const STATUS_ORDER: Record<string, number> = { in_review: 0, unread: 1, signed_out: 2 }
+const STATUS_ORDER: Record<string, number> = { assessed: 0, opened: 1, in_review: 1, unread: 2, signed_out: 3 }
+const DEFAULT_SORT: SortState = { key: 'routing', dir: 'desc' }
 
-function Meter({ value, secondary, label }: { value: number | null; secondary?: boolean; label: string }) {
-  return (
-    <span className={`meter ${secondary ? 'secondary' : ''}`}>
-      <span className="meter-track" aria-hidden><span className="meter-fill" style={{ width: `${Math.max(0, Math.min(1, value ?? 0)) * 100}%` }} /></span>
-      <span className="meter-val num" aria-label={`${label} ${score(value)}`}>{score(value)}</span>
-    </span>
-  )
+/** Worklist filters persist per reader (this browser) across reloads. */
+function usePersisted<T>(key: string, initial: T): [T, (v: T) => void] {
+  const [v, setV] = useState<T>(() => {
+    try { const raw = window.localStorage.getItem(key); return raw ? (JSON.parse(raw) as T) : initial } catch { return initial }
+  })
+  useEffect(() => { try { window.localStorage.setItem(key, JSON.stringify(v)) } catch { /* storage unavailable */ } }, [key, v])
+  return [v, setV]
 }
 
 export default function CaseWorklist(p: Props) {
-  const [query, setQuery] = useState('')
-  const [segment, setSegment] = useState<Segment>(p.variant === 'overview' ? 'open' : 'all')
-  const [tier, setTier] = useState<'all' | 'slow' | 'fast'>('all')
+  const k = `claripath.worklist.${p.variant}`
+  const [query, setQuery] = usePersisted(`${k}.q`, '')
+  const [segment, setSegment] = usePersisted<Segment>(`${k}.seg`, p.variant === 'overview' ? 'open' : 'all')
+  const [tier, setTier] = usePersisted<'all' | 'slow' | 'fast'>(`${k}.tier`, 'all')
+  const [sort, setSort] = usePersisted<SortState | null>(`${k}.sort`, DEFAULT_SORT)
 
   const signal = p.cases[0]?.routing_signal
   const primaryLabel = signal === 'entropy' ? 'Uncertainty' : 'Disagreement'
@@ -56,18 +62,23 @@ export default function CaseWorklist(p: Props) {
       && (!q || c.slide_id.toLowerCase().includes(q) || c.case_id.toLowerCase().includes(q) || c.organ.toLowerCase().includes(q)))
   }, [p.cases, query, segment, tier])
 
+  const rankOf = useMemo(() => {
+    const ranked = [...p.cases].filter((c) => routingScore(c) !== null).sort((a, b) => (routingScore(b) ?? 0) - (routingScore(a) ?? 0))
+    return Object.fromEntries(ranked.map((c, i) => [c.case_id, i + 1])) as Record<string, number>
+  }, [p.cases])
+
   const columns = useMemo<Column<CaseRow>[]>(() => {
     const cols: Column<CaseRow>[] = [
-      { key: 'case', header: 'Case', sortValue: (c) => c.slide_id,
+      { key: 'case', header: 'Case', priority: 0, minWidth: 110, sortValue: (c) => c.slide_id,
         cell: (c) => (
           <div className="cell-case">
             <span className="mono">{c.slide_id}</span>
-            <span className="cell-sub">{tissueLabel(c.organ)}{p.variant === 'full' ? ` · ${c.dataset.toUpperCase()}` : ''}</span>
+            <span className="cell-sub">{tissueLabel(c.organ)}</span>
           </div>
         ) },
-      { key: 'status', header: 'Status', sortValue: (c) => STATUS_ORDER[c.review_status] ?? 9,
-        cell: (c) => <StatusBadge kind="review" value={c.review_status} /> },
-      { key: 'tier', header: 'Routing', sortValue: (c) => (c.tier === 'slow' ? 0 : c.tier === 'fast' ? 1 : 2),
+      { key: 'status', header: 'Status', priority: 0, minWidth: 130, sortValue: (c) => STATUS_ORDER[displayStatus(c, p.activity[c.case_id])] ?? 9,
+        cell: (c) => <StatusBadge kind="review" value={displayStatus(c, p.activity[c.case_id])} /> },
+      { key: 'tier', header: 'Routing', priority: 1, minWidth: 128, sortValue: (c) => (c.tier === 'slow' ? 0 : c.tier === 'fast' ? 1 : 2),
         info: (
           <>
             <strong>Fast / slow path.</strong> Cases ranked in the top 15% by {routingLabel(signal).toLowerCase()} go to the slow path,
@@ -75,70 +86,77 @@ export default function CaseWorklist(p: Props) {
           </>
         ),
         cell: (c) => <StatusBadge kind="tier" value={c.tier} /> },
-      { key: 'routing', header: primaryLabel, align: 'right', firstDir: 'desc', sortValue: (c) => routingScore(c),
+      { key: 'routing', header: primaryLabel, align: 'right', priority: 0, minWidth: 150, firstDir: 'desc', sortValue: (c) => routingScore(c),
         info: (
           <>
-            <strong>{routingLabel(signal)} (routing signal).</strong>{' '}
+            <strong>{routingLabel(signal)}: the routing signal.</strong>{' '}
             {signal === 'entropy'
-              ? 'Case-level 90th percentile of tumour-probe entropy across tissue tiles.'
-              : 'Case-level 90th percentile of the tile disagreement rank between two pathology models.'}{' '}
-            A relative 0–1 score used to order the queue — not a probability of cancer.
-            {routingSource && <><br /><br />Chosen because: {routingSource}.</>}
+              ? 'Normalised entropy of the tumour probe (0–1, higher = less certain), taken as the 90th percentile over the case’s tissue tiles.'
+              : 'Case-level 90th percentile of the tile disagreement rank between two pathology models (0–1).'}{' '}
+            Not a probability of cancer. "#n" is the case’s rank among all {p.cases.length} cases.
+            {routingSource && <><br /><br />Why this signal: {routingSource}.</>}
           </>
         ),
-        cell: (c) => <Meter value={routingScore(c)} label={primaryLabel} /> },
-      { key: 'secondary', header: secondaryLabel, align: 'right', firstDir: 'desc', hideBelow: p.variant === 'overview' ? 1600 : 1100,
+        cell: (c) => {
+          const v = routingScore(c)
+          return (
+            <span className="meter">
+              <span className="meter-rank num">{rankOf[c.case_id] ? `#${rankOf[c.case_id]}` : ''}</span>
+              <span className="meter-track" aria-hidden><span className="meter-fill" style={{ width: `${Math.max(0, Math.min(1, v ?? 0)) * 100}%` }} /></span>
+              <span className="meter-val num">{score(v)}</span>
+            </span>
+          )
+        } },
+      { key: 'secondary', header: secondaryLabel, align: 'right', priority: p.variant === 'overview' ? 5 : 3, minWidth: 116, firstDir: 'desc',
         sortValue: (c) => (signal === 'entropy' ? c.disagreement_score : c.uncertainty_score),
         info: signal === 'entropy' ? (
           <>
-            <strong>Model disagreement (shown, not used for routing).</strong> 90th-percentile tile rank of disagreement between
-            PLIP and QuiltNet ({p.cases[0]?.disagreement_source ?? 'source unknown'}). Relative 0–1 rank. It did not beat single-model
-            uncertainty in evaluation, so it does not set the tier.
+            <strong>Model disagreement (shown for comparison; not used for routing).</strong> 90th-percentile tile rank of disagreement
+            between PLIP and QuiltNet (0–1). In evaluation it caught fewer model errors than uncertainty, so it does not set the tier.
           </>
-        ) : <>Single-model uncertainty, shown for comparison. Relative 0–1 score.</>,
-        cell: (c) => <Meter secondary value={signal === 'entropy' ? c.disagreement_score : c.uncertainty_score} label={secondaryLabel} /> },
+        ) : <>Single-model uncertainty, shown for comparison.</>,
+        cell: (c) => <span className="num muted">{score(signal === 'entropy' ? c.disagreement_score : c.uncertainty_score)}</span> },
     ]
     if (p.variant === 'full') {
-      cols.push(
-      { key: 'artifact', header: 'Artifacts', align: 'right', firstDir: 'desc', hideBelow: 1280, sortValue: (c) => c.artifact_share,
-        info: <>Share of tissue tiles flagged by the artifact gate (blur, ink, folds). Called out above {pct(ARTIFACT_FLAG)}; flagged tiles are excluded from disagreement.</>,
+      cols.push({ key: 'artifact', header: 'Artifacts', align: 'right', priority: 4, minWidth: 104, firstDir: 'desc', sortValue: (c) => c.artifact_share,
+        info: <>Share of tissue tiles flagged by the artifact gate (blur, ink, folds). Flagged above {ARTIFACT_FLAG * 100}%; flagged tiles are excluded from disagreement.</>,
         cell: (c) => c.artifact_share === null ? <span className="muted">—</span>
           : c.artifact_share > ARTIFACT_FLAG
-            ? <span className="tag warn-tag"><TriangleAlert size={12} aria-hidden />{pct(c.artifact_share)}<span className="sr-only"> of tiles, above flag level</span></span>
-            : <span className="muted num">{pct(c.artifact_share)}</span> })
-      cols.push({ key: 'reads', header: 'Replays', align: 'right', firstDir: 'desc', hideBelow: 1600, sortValue: (c) => c.recorded_reads,
+            ? <span className="tag warn-tag"><TriangleAlert size={12} aria-hidden />{pct1(c.artifact_share)}<span className="sr-only"> of tiles, above the flag level</span></span>
+            : <span className="muted num">{pct1(c.artifact_share)}</span> })
+      cols.push({ key: 'reads', header: 'Replays', align: 'right', priority: 6, minWidth: 96, firstDir: 'desc', sortValue: (c) => c.recorded_reads,
         info: <>Recorded PathoGaze eye-tracking reads available to replay in Slide Review.</>,
         cell: (c) => c.recorded_reads ? <span className="num">{c.recorded_reads}</span> : <span className="muted">—</span> })
     }
     cols.push(
-      { key: 'activity', header: 'Last activity', align: 'right', firstDir: 'desc', sortValue: (c) => p.lastActivity[c.case_id] ?? null,
-        info: <>Most recent audit-log event for this case (open, layer change, assessment, sign-out check) from any session.</>,
+      { key: 'activity', header: 'Last opened', align: 'right', priority: 2, minWidth: 124, firstDir: 'desc',
+        sortValue: (c) => p.activity[c.case_id]?.lastOpened ?? null,
+        info: <>Most recent event on a read of this case (opening, viewing, assessing), from the audit log of any session.</>,
         cell: (c) => {
-          const t = p.lastActivity[c.case_id]
+          const t = p.activity[c.case_id]?.lastOpened
           return t ? <time dateTime={t} title={absoluteTime(t)} className="num nowrap">{relativeTime(t, true)}</time> : <span className="muted">—</span>
         } },
-      { key: 'open', header: '', align: 'right', width: '1%',
-        cell: (c) => (
-          <ButtonLink size="sm" variant={p.currentCaseId === c.case_id ? 'primary' : 'secondary'} href={href({ page: 'review', caseId: c.case_id })}
-            iconRight={ArrowRight} aria-label={`${p.currentCaseId === c.case_id ? 'Return to' : 'Open'} ${c.slide_id} in Slide Review`}>
-            {p.currentCaseId === c.case_id ? 'Return' : c.review_status === 'in_review' ? 'Resume' : 'Open'}
-          </ButtonLink>
-        ) },
+      { key: 'open', header: 'Action', align: 'right', priority: 0, minWidth: 108, sticky: true,
+        cell: (c) => {
+          const cur = p.currentCaseId === c.case_id
+          const label = actionLabel(c, cur)
+          return (
+            <ButtonLink size="sm" variant={cur ? 'primary' : 'secondary'} href={href({ page: 'review', caseId: c.case_id })}
+              iconRight={ArrowRight} aria-label={`${label} ${c.slide_id}`}>
+              {label}
+            </ButtonLink>
+          )
+        } },
     )
     return cols
-  }, [p.variant, p.lastActivity, p.currentCaseId, p.cases, signal, primaryLabel, secondaryLabel, routingSource])
+  }, [p.variant, p.activity, p.currentCaseId, p.cases.length, signal, primaryLabel, secondaryLabel, routingSource, rankOf])
 
   const segTabs = p.variant === 'full'
-    ? [
-        { id: 'all', label: 'All', count: counts.all },
-        { id: 'attention', label: 'Needs attention', count: counts.attention },
-        { id: 'in_review', label: REVIEW_STATUS.in_review.label, count: counts.in_review },
-        { id: 'unread', label: REVIEW_STATUS.unread.label, count: counts.unread },
-        { id: 'signed_out', label: REVIEW_STATUS.signed_out.label, count: counts.signed_out },
-      ]
+    ? (['all', 'attention', 'in_review', 'unread', 'signed_out'] as Segment[]).map((id) => ({ id, label: SEGMENT_LABEL[id], count: counts[id] }))
     : null
 
-  const filtersActive = query !== '' || tier !== 'all' || segment !== (p.variant === 'overview' ? 'open' : 'all')
+  const defaultSeg: Segment = p.variant === 'overview' ? 'open' : 'all'
+  const filtersActive = query !== '' || tier !== 'all' || segment !== defaultSeg
 
   return (
     <div className="worklist">
@@ -155,12 +173,9 @@ export default function CaseWorklist(p: Props) {
           <label className="field-inline">
             <span>Status</span>
             <select className="select" value={segment} onChange={(e) => setSegment(e.target.value as Segment)}>
-              <option value="open">Open (not completed) · {counts.open}</option>
-              <option value="all">All · {counts.all}</option>
-              <option value="attention">Needs attention · {counts.attention}</option>
-              <option value="in_review">In review · {counts.in_review}</option>
-              <option value="unread">Not started · {counts.unread}</option>
-              <option value="signed_out">Completed · {counts.signed_out}</option>
+              {(['open', 'all', 'attention', 'in_review', 'unread', 'signed_out'] as Segment[]).map((s) => (
+                <option key={s} value={s}>{SEGMENT_LABEL[s]} · {counts[s]}</option>
+              ))}
             </select>
           </label>
         )}
@@ -173,7 +188,7 @@ export default function CaseWorklist(p: Props) {
           </select>
         </label>
         {filtersActive && (
-          <button type="button" className="link-btn small" onClick={() => { setQuery(''); setTier('all'); setSegment(p.variant === 'overview' ? 'open' : 'all') }}>
+          <button type="button" className="link-btn small" onClick={() => { setQuery(''); setTier('all'); setSegment(defaultSeg) }}>
             Clear filters
           </button>
         )}
@@ -188,7 +203,7 @@ export default function CaseWorklist(p: Props) {
       ) : (
         <DataTable rows={rows} columns={columns} rowKey={(c) => c.case_id}
           caption={p.variant === 'overview' ? 'Priority review queue' : 'Case worklist'}
-          defaultSort={{ key: 'routing', dir: 'desc' }}
+          sort={sort} onSortChange={setSort} defaultSort={DEFAULT_SORT}
           onRowClick={(c) => p.onOpen(c.case_id)}
           isSelected={(c) => c.case_id === p.currentCaseId}
           rowClassName={(c) => (needsAttention(c) ? 'row-attention' : c.review_status === 'signed_out' ? 'row-done' : undefined)}
