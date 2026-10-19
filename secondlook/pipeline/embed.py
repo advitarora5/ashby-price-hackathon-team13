@@ -130,7 +130,7 @@ class HFClipEncoder(_TorchVisionEncoder):
 
     def __init__(self, name: str, repo: str):
         import torch
-        from transformers import CLIPModel, CLIPTokenizer
+        from transformers import CLIPModel, CLIPTokenizerFast  # the slow tokenizer finds no vocab file for vinid/plip
 
         self.name = name
         self.device = _device()
@@ -138,7 +138,7 @@ class HFClipEncoder(_TorchVisionEncoder):
         if self.device == "cuda":
             model = model.half()
         self.model = model
-        self.tokenizer = CLIPTokenizer.from_pretrained(repo)
+        self.tokenizer = CLIPTokenizerFast.from_pretrained(repo)
         self.dim = int(model.config.projection_dim)
         with torch.no_grad():
             self._scale = float(model.logit_scale.exp().item())
