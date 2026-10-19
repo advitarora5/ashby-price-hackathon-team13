@@ -213,3 +213,19 @@ tr.hl td { background: var(--accent-soft); }
 .ctx-top, .ctx-matches { margin: 4px 0; padding-left: 16px; }
 .ctx-top li, .ctx-matches li { margin: 3px 0; }
 .ctx-search { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+
+/* optional Clef panel (components/ClefPanel.tsx) */
+.clef-run { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.clef-group { border-left: 3px solid var(--line); padding: 2px 0 2px 8px; margin: 8px 0; }
+.clef-group ul, .clef-regions { margin: 2px 0; padding-left: 0; list-style: none; }
+.clef-group li, .clef-regions li { margin: 4px 0; }
+.clef-title { font-weight: 600; margin-bottom: 2px; }
+.clef-icon { display: inline-block; width: 16px; }
+.clef-group.tone-bad { border-color: var(--red); } .clef-group.tone-bad .clef-title { color: var(--red); }
+.clef-group.tone-warn { border-color: var(--amber); } .clef-group.tone-warn .clef-title { color: var(--warn); }
+.clef-group.tone-ok { border-color: var(--green); } .clef-group.tone-ok .clef-title { color: var(--green); }
+.clef-group.tone-muted .clef-title { color: var(--muted); }
+.clef-links { display: inline-flex; gap: 8px; margin-left: 8px; }
+.clef-method { margin-top: 6px; }
+.clef-sub { padding: 10px 0 4px; }
+.clef-regions .btn { margin-left: 8px; }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError } from './api'
 import CaseQueue from './components/CaseQueue'
+import ClefPanel from './components/ClefPanel'
 import ContextPanel from './components/ContextPanel'
 import EvalView from './components/EvalView'
 import EvidencePanel from './components/EvidencePanel'
@@ -336,6 +337,10 @@ export default function App() {
                     setFocus({ rect: { x, y, w: Math.max(...rects.map((r) => r.x + r.w)) - x, h: Math.max(...rects.map((r) => r.y + r.h)) - y }, key: Date.now() })
                   }}
                   onOpenMatch={(c, tile, r) => openCase(c, { tile, rect: { x: r.x - 6 * r.w, y: r.y - 6 * r.h, w: 13 * r.w, h: 13 * r.h } })} />
+                {!replay.active && (
+                  <ClefPanel caseId={detail.case_id} read={read} regions={[...disputed, ...evRegions]} onJump={jump}
+                    onShowTiles={(rects, label) => setCtxBoxes({ rects, label })} />
+                )}
                 <UnseenPanel coverage={coverage} signout={signout} onJump={jump} activeAlert={activeAlert} />
                 <PolicyPanel rec={replay.active ? null : rec} summary={summary} tierSlow={detail.tier === 'slow'} onSecondRead={secondRead} />
                 <ReplayPanel caseId={detail.case_id} onStep={onReplayStep} onStart={onReplayStart} onStop={onReplayStop} />

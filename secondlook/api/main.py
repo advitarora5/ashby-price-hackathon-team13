@@ -60,6 +60,12 @@ if os.environ.get("SECONDLOOK_CONTEXT", "1") != "0":
 
     app.include_router(context.router, prefix="/api")
 
+# optional Clef feature (notes check, region referee); SECONDLOOK_CLEF=0 turns it off (see secondlook/clef.py)
+if os.environ.get("SECONDLOOK_CLEF", "1") != "0":
+    from secondlook.api.services import clef as clef_service
+
+    app.include_router(clef_service.router, prefix="/api")
+
 _dist = REPO_ROOT / "frontend" / "dist"
 if _dist.exists():
     app.mount("/assets", StaticFiles(directory=_dist / "assets"), name="assets")
