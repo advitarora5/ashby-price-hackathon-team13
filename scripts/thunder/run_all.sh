@@ -24,14 +24,20 @@ stamp "smoke test: CONCH and MUSK load and embed"
 $PY scripts/delta/smoke_encoders.py --models conch musk
 
 stamp "embed CAMELYON16 slides as their downloads finish"
-for s in $(cat "$SLIDES"); do
+# one process per batch of downloaded slides, so the six models load once per batch, not per slide
+while true; do
   # the downloader prints "<name> <bytes> xml|no-xml" once the checksum has passed
-  until grep -q "^$s " "$DL_LOG"; do
-    if grep -q DOWNLOADS_DONE "$DL_LOG"; then echo "$s did not download; skipping"; continue 2; fi
-    sleep 20
-  done
-  $PY -m secondlook.pipeline.run_camelyon embed "$s" --models $MODELS --workers 14
+  ready=$(grep -oE "^[a-z]+_[0-9]+ [0-9]+ (xml|no-xml)$" "$DL_LOG" | cut -d' ' -f1 | grep -Fx -f "$SLIDES" \
+          | while read -r s; do [ -f "$SECONDLOOK_DATA/work/camelyon16/$s/info.json" ] || echo "$s"; done || true)
+  if [ -n "$ready" ]; then
+    $PY -m secondlook.pipeline.run_camelyon embed $ready --models $MODELS --workers 14
+    continue
+  fi
+  if grep -q DOWNLOADS_DONE "$DL_LOG"; then break; fi
+  sleep 30
 done
+missing=$(while read -r s; do [ -f "$SECONDLOOK_DATA/work/camelyon16/$s/info.json" ] || echo "$s"; done < "$SLIDES")
+[ -z "$missing" ] || echo "not embedded (download failed?): $missing"
 
 stamp "NCT tissue tiles: embed, tissue probes, feature-bar calibrators"
 until grep -q NCT_DONE "$NCT_LOG"; do sleep 30; done
