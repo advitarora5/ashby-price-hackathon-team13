@@ -121,8 +121,11 @@ class ArtifactRules:
 ARTIFACT_RULES = ArtifactRules()
 
 # ---- Models ------------------------------------------------------------------
-PRIMARY_MODEL = "quiltnet"
-PATHOLOGY_MODELS = ("quiltnet", "plip", "pathgen")
+# The two models compared for disagreement. Set both in .env to match the bundle being served
+# (e.g. SECONDLOOK_PRIMARY_MODEL=conch, SECONDLOOK_SECONDARY_MODEL=musk).
+PRIMARY_MODEL = os.environ.get("SECONDLOOK_PRIMARY_MODEL", "quiltnet")
+SECONDARY_MODEL = os.environ.get("SECONDLOOK_SECONDARY_MODEL", "plip")
+PATHOLOGY_MODELS = ("quiltnet", "plip", "pathgen", "conch", "musk")  # vision-language: also embed text
 CONTROL_MODELS = ("imagenet", "colorhist")
 
 # ---- Tumor regions -------------------------------------------------------------

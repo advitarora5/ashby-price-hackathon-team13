@@ -155,7 +155,7 @@ export default function App() {
       setRead(r)
       if (wasHidden && r.evidence_visible) await loadEvidence(selected, r)
       if (stage === 'final' && signout) await doSignout(r, d)
-      else setRec(await api.policy(r.read_id))
+      else if (r.evidence_visible) setRec(await api.policy(r.read_id))
     } catch (e) { setError((e as Error).message) }
   }
 

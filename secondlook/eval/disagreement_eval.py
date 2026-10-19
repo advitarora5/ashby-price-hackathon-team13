@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from secondlook.config import NCT_CLASSES, PRIMARY_MODEL, SLOW_PATH_SHARE, bundle_paths
+from secondlook.config import NCT_CLASSES, PRIMARY_MODEL, SECONDARY_MODEL, SLOW_PATH_SHARE, bundle_paths
 from secondlook.eval.stats import ci, group_bootstrap, holm, paired_p, write_eval
 from secondlook.pipeline.disagreement import (Reference, components, entropy, knn_distance, margin_uncertainty,
                                               midrank_percentile)
@@ -58,27 +58,28 @@ def compare(err: np.ndarray, scores: dict[str, np.ndarray], groups=None, seed_sc
 def nct() -> dict:
     from secondlook.pipeline.run_nct import WORK, load, protocol
 
-    pa, pb = WORK / f"test_preds_{PRIMARY_MODEL}.parquet", WORK / "test_preds_plip.parquet"
+    a, b = PRIMARY_MODEL, SECONDARY_MODEL
+    pa, pb = WORK / f"test_preds_{a}.parquet", WORK / f"test_preds_{b}.parquet"
     if not (pa.exists() and pb.exists()):
-        return {"available": False, "reason": "need NCT test predictions for quiltnet and plip"}
+        return {"available": False, "reason": f"need NCT test predictions for {a} and {b}"}
     A, B = pd.read_parquet(pa), pd.read_parquet(pb)
     pcols = [f"p_{c}" for c in NCT_CLASSES]
     feat_cols = sorted(c for c in A if c.startswith("raw_") and c in B)
-    probs = {"quiltnet": A[pcols].to_numpy(), "plip": B[pcols].to_numpy()}
-    feats = {"quiltnet": A[feat_cols].to_numpy(), "plip": B[feat_cols].to_numpy()} if feat_cols else None
+    probs = {a: A[pcols].to_numpy(), b: B[pcols].to_numpy()}
+    feats = {a: A[feat_cols].to_numpy(), b: B[feat_cols].to_numpy()} if feat_cols else None
     comp = components(probs, feats)
     # within-set percentiles (recipe disagreement_v1: mean of component percentiles)
     dis = np.mean([midrank_percentile(v, np.sort(v)) for v in comp.values()], axis=0)
     y = A.label.to_numpy()
-    err = (probs["quiltnet"].argmax(1) != y).astype(int)
-    scores = {"disagreement": dis, "entropy": entropy(probs["quiltnet"]), "margin": margin_uncertainty(probs["quiltnet"])}
+    err = (probs[a].argmax(1) != y).astype(int)
+    scores = {"disagreement": dis, "entropy": entropy(probs[a]), "margin": margin_uncertainty(probs[a])}
     idx_te, X_te = load("test", PRIMARY_MODEL)
     idx_tr, X_tr = load("train", PRIMARY_MODEL)
     if X_tr is not None:
         sub = np.random.default_rng(0).choice(len(X_tr), min(30000, len(X_tr)), replace=False)
         scores["knn_distance"] = knn_distance(X_te, X_tr[sub])
     return {"available": True, "protocol": protocol(), "n_tiles": int(len(y)), "n_errors": int(err.sum()),
-            "error_rate": float(err.mean()), "models": ["quiltnet", "plip"], "results": compare(err, scores),
+            "error_rate": float(err.mean()), "models": [a, b], "results": compare(err, scores),
             "bootstrap": "tile-level (no patient ids)"}
 
 
