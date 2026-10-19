@@ -27,6 +27,11 @@ def features():
     return _FEATS
 
 
+def feature_ids(sd: SlideData) -> list[str]:
+    """Features that have a bar on this slide (the ones the reader is asked to review)."""
+    return [f.id for f in features() if sd.col(f"feat_{f.id}_raw") is not None]
+
+
 def _rect(sd: SlideData, i: int) -> dict:
     t = sd.tiles.iloc[i]
     return {"x": int(t.x), "y": int(t.y), "w": int(t.w0), "h": int(t.w0)}

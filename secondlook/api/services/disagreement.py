@@ -19,7 +19,7 @@ def list_cases(store: Store = Depends(get_store)):
         rows = db.all_(con, """
             SELECT c.case_id, c.slide_id, s.organ, s.dataset, c.disagreement_score, c.disagreement_source,
                    c.uncertainty_score, COALESCE(c.routing_signal, 'disagreement') AS routing_signal,
-                   COALESCE(c.tier,'unavailable') AS tier, c.tier_rule, c.artifact_share, c.review_status,
+                   COALESCE(c.tier,'unavailable') AS tier, c.tier_rule, c.artifact_share, c.tissue_artifact_share, c.tier_reasons, c.review_status,
                    (SELECT COUNT(*) FROM reads r WHERE r.case_id=c.case_id AND r.source='pathogaze') AS recorded_reads
             FROM cases c JOIN slides s USING(slide_id)
             WHERE s.status='ok'
@@ -28,7 +28,13 @@ def list_cases(store: Store = Depends(get_store)):
                      c.case_id""")
     finally:
         con.close()
+    for r in rows:
+        r["tier_reasons"] = _reasons(r["tier_reasons"])
     return rows
+
+
+def _reasons(s: str | None) -> list[str]:
+    return s.split(",") if s else []
 
 
 @router.get("/cases/{case_id}", response_model=CaseDetail)
@@ -52,6 +58,7 @@ def get_case(case_id: str, store: Store = Depends(get_store)):
         dzi = None
     c["tier"] = c.get("tier") or "unavailable"
     c["routing_signal"] = c.get("routing_signal") or "disagreement"
+    c["tier_reasons"] = _reasons(c.get("tier_reasons"))
     return CaseDetail(**{k: c[k] for k in CaseRow.model_fields if k in c},
                       width=c["width"], height=c["height"], mpp=c["mpp"], tile_w0=c["tile_w0"],
                       grid_rows=c["grid_rows"], grid_cols=c["grid_cols"], dzi_url=dzi,

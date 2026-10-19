@@ -17,6 +17,8 @@ interface Props {
   activeAlert: string | null
   zoomMag: number | null
   canRunCheck: boolean
+  /** why the check cannot run yet, when the call is recorded but notes or feature verdicts are missing */
+  checkTodo: string[]
   onRunCheck: () => void
   replay: ReactNode
   replayActive: boolean
@@ -44,7 +46,7 @@ function Light({ s, label }: { s: Signout; label?: string }) {
 }
 
 /** Attention tracking: what has been viewed, and the unseen-tissue check that runs before a research sign-out. */
-export default function UnseenTab({ coverage, latest, alertCheck, finalDecision, onJump, activeAlert, zoomMag, canRunCheck, onRunCheck, replay, replayActive }: Props) {
+export default function UnseenTab({ coverage, latest, alertCheck, finalDecision, onJump, activeAlert, zoomMag, canRunCheck, checkTodo, onRunCheck, replay, replayActive }: Props) {
   const [showReplay, setShowReplay] = useState(replayActive)
   const minMag = coverage?.params.min_magnification ?? 10
   const recheckDiffers = latest && alertCheck && latest !== alertCheck
@@ -74,9 +76,9 @@ export default function UnseenTab({ coverage, latest, alertCheck, finalDecision,
               Before a research sign-out, the check looks for tissue you have not viewed that the tumour probe scores highly,
               and points you to at most two regions.
             </p>
-            {canRunCheck
+            {canRunCheck && checkTodo.length === 0
               ? <Button variant="secondary" size="sm" onClick={onRunCheck}>Run research sign-out check</Button>
-              : <p className="xs muted">Available after you record your initial assessment.</p>}
+              : <p className="xs muted">{canRunCheck ? `Before the check, record: ${checkTodo.join(', ')}.` : 'Available after you record your initial assessment.'}</p>}
           </>
         )}
         {alertCheck && <Light s={alertCheck} label={recheckDiffers ? 'Check on your initial call' : undefined} />}

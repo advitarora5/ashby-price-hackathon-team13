@@ -31,13 +31,16 @@ def requires_blind(case: dict, blind_all: bool = False) -> bool:
 
 def evidence_gate(case: dict, read: dict | None) -> tuple[bool, str | None]:
     """Disagreement service rule: in blind mode, AI evidence stays hidden until the
-    reader records an initial assessment."""
+    reader has saved their own notes and recorded an initial assessment."""
     if read is None:
         if case.get("tier") == "slow":
-            return False, "slow-path case: start a read and record your own assessment first"
+            return False, "slow-path case: start a read and record your own notes and assessment first"
         return True, None
-    if read.get("review_mode") == "blind" and not read.get("initial_decision"):
-        return False, "blind review: record your initial assessment to reveal AI evidence"
+    if read.get("review_mode") == "blind":
+        missing = [w for w, ok in (("save your notes", read.get("notes_saved_at")),
+                                   ("record your assessment", read.get("initial_decision"))) if not ok]
+        if missing:
+            return False, f"blind review: {' and '.join(missing)} to reveal AI evidence"
     return True, None
 
 

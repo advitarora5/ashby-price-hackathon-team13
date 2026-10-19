@@ -119,8 +119,10 @@ export default function CaseWorklist(p: Props) {
     ]
     if (p.variant === 'full') {
       cols.push({ key: 'artifact', header: 'Artifacts', align: 'right', priority: 4, minWidth: 104, firstDir: 'desc', sortValue: (c) => c.artifact_share,
-        info: <>Share of tissue tiles flagged by the artifact gate (blur, ink, folds). Flagged above {ARTIFACT_FLAG * 100}%; flagged tiles are excluded from disagreement.</>,
+        info: <>Share of tissue tiles flagged by the artifact gate (blur, ink, folds). Flagged above {ARTIFACT_FLAG * 100}%; flagged tiles are excluded from disagreement. Damage on 10% or more of the tissue also sends a case to the slow path.</>,
         cell: (c) => c.artifact_share === null ? <span className="muted">—</span>
+          : c.tier_reasons.includes('artifacts')
+            ? <span className="tag warn-tag" title={`Slow path: damaged tissue (${pct1(c.tissue_artifact_share)} of tissue)`}><TriangleAlert size={12} aria-hidden />{pct1(c.artifact_share)} · slow path<span className="sr-only"> because of damaged tissue</span></span>
           : c.artifact_share > ARTIFACT_FLAG
             ? <span className="tag warn-tag"><TriangleAlert size={12} aria-hidden />{pct1(c.artifact_share)}<span className="sr-only"> of tiles, above the flag level</span></span>
             : <span className="muted num">{pct1(c.artifact_share)}</span> })

@@ -29,9 +29,10 @@ def connect(path: Path | str) -> sqlite3.Connection:
 # Columns added after the first release of a table. CREATE TABLE IF NOT EXISTS does
 # not add columns to an existing table, so they are added here (idempotent).
 MIGRATIONS = {
-    "cases": [("uncertainty_score", "REAL"), ("routing_signal", "TEXT")],
+    "cases": [("uncertainty_score", "REAL"), ("routing_signal", "TEXT"), ("tissue_artifact_share", "REAL"),
+              ("tier_reasons", "TEXT")],
     "reads": [("last_light", "TEXT"), ("signout_attempts", "INTEGER NOT NULL DEFAULT 0"),
-              ("second_decision", "TEXT"), ("third_decision", "TEXT")],
+              ("second_decision", "TEXT"), ("third_decision", "TEXT"), ("notes", "TEXT"), ("notes_saved_at", "TEXT")],
 }
 
 

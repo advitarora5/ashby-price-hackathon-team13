@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Check, CircleCheck, CircleMinus, CircleX, Info, TriangleAlert, UserCheck, Users } from 'lucide-react'
 import type { Decision, PolicyRec, Read, Signout } from '../../types'
 import { STEPS, currentStep, type WorkflowState } from '../../lib/workflow'
@@ -18,6 +18,8 @@ interface Props {
   readOnly: boolean
   extraReads: { stage: string; decision: Decision }[]
   onSecondRead: (stage: 'second_reader' | 'third_reader', d: Decision) => Promise<void>
+  /** the reader's notes editor, shown first */
+  notes: ReactNode
 }
 
 const SUGGESTION: Record<string, string> = {
@@ -45,7 +47,7 @@ const reword = (r: string, signal: string) =>
 const cap = (s: string | null | undefined) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '—')
 const DECISIONS: Decision[] = ['benign', 'suspicious', 'malignant']
 
-export default function DecisionTab({ wf, read, latest, alertCheck, rec, tierSlow, routingSignal, confirmed, priorExposure, readOnly, extraReads, onSecondRead }: Props) {
+export default function DecisionTab({ wf, read, latest, alertCheck, rec, tierSlow, routingSignal, confirmed, priorExposure, readOnly, extraReads, onSecondRead, notes }: Props) {
   const cur = readOnly ? 5 : currentStep(wf)
   const [pick, setPick] = useState<Decision | null>(null)
   const finalCall = confirmed || readOnly ? read?.final_decision ?? null : null
@@ -68,6 +70,7 @@ export default function DecisionTab({ wf, read, latest, alertCheck, rec, tierSlo
 
   return (
     <div className="tab-stack">
+      {notes}
       <section className="sub" aria-labelledby="dc-steps">
         <div className="sub-head"><h3 id="dc-steps">Review workflow</h3></div>
         <ol className="stepper">

@@ -1,5 +1,5 @@
 """End-to-end API flow on the synthetic test bundle (see conftest)."""
-from tests.conftest import CASE, SLOW_SLIDE
+from tests.conftest import CASE, SLIDE, SLOW_SLIDE
 
 
 def test_queue_never_leaks_ground_truth(client):
@@ -20,12 +20,52 @@ def test_blind_gate_on_slow_path(client):
     assert ev["hidden"] and ev["features"] == []
     assert c.get(f"/api/cases/{case}/overlay/risk.png", params={"read_id": r["read_id"]}).status_code == 403
     assert c.get(f"/api/cases/{case}/regions", params={"read_id": r["read_id"]}).json()["hidden"]
-    c.post(f"/api/reads/{r['read_id']}/decision", json={"stage": "initial", "decision": "benign"})
+    # an assessment alone is not enough: the reader's own notes must be saved too
+    r2 = c.post(f"/api/reads/{r['read_id']}/decision", json={"stage": "initial", "decision": "benign"}).json()
+    assert not r2["evidence_visible"]
+    assert c.get(f"/api/cases/{case}/evidence", params={"read_id": r["read_id"]}).json()["hidden"]
+    assert c.put(f"/api/reads/{r['read_id']}/features/metastasis", json={"verdict": "agree"}).status_code == 403
+    assert c.put(f"/api/reads/{r['read_id']}/notes", json={"notes": "  "}).status_code == 422
+    r3 = c.put(f"/api/reads/{r['read_id']}/notes", json={"notes": "nests of atypical cells, top left"}).json()
+    assert r3["evidence_visible"] and r3["notes_saved_at"]
     ev = c.get(f"/api/cases/{case}/evidence", params={"read_id": r["read_id"]}).json()
     assert not ev["hidden"] and ev["features"]
     log = [e["action"] for e in c.get("/api/audit", params={"read_id": r["read_id"]}).json()]
-    assert log.index("blind_assessment") < log.index("evidence_shown")
+    assert log.index("blind_assessment") < log.index("notes_saved") < log.index("evidence_shown")
+    assert log.count("evidence_unlocked") == 1 and log.index("notes_saved") < log.index("evidence_unlocked")
     assert "evidence_withheld" in log
+
+
+def test_notes_first_then_assessment_also_unlocks(client):
+    c, _, _ = client
+    case = f"case_{SLOW_SLIDE}"
+    rid = c.post("/api/reads", json={"case_id": case}).json()["read_id"]
+    assert not c.put(f"/api/reads/{rid}/notes", json={"notes": "first look"}).json()["evidence_visible"]
+    assert c.post(f"/api/reads/{rid}/decision", json={"stage": "initial", "decision": "suspicious"}).json()["evidence_visible"]
+    # later saves keep the first-save time and never re-hide the AI
+    first = c.get(f"/api/reads/{rid}").json()["notes_saved_at"]
+    again = c.put(f"/api/reads/{rid}/notes", json={"notes": "first look, revised"}).json()
+    assert again["notes_saved_at"] == first and again["notes"] == "first look, revised" and again["evidence_visible"]
+
+
+def test_signout_requires_notes_and_a_verdict_per_feature(client):
+    c, _, _ = client
+    rid = c.post("/api/reads", json={"case_id": CASE}).json()["read_id"]
+    r = c.post(f"/api/reads/{rid}/decision", json={"stage": "initial", "decision": "benign"}).json()
+    assert r["signout_missing"] == ["notes", "feature verdicts (2 of 2 left)"]
+    blocked = c.post(f"/api/reads/{rid}/signout", json={"decision": "benign"})
+    assert blocked.status_code == 409 and "notes" in blocked.json()["detail"]
+    c.put(f"/api/reads/{rid}/notes", json={"notes": "reactive node"})
+    assert c.put(f"/api/reads/{rid}/features/nope", json={"verdict": "agree"}).status_code == 404
+    assert c.put(f"/api/reads/{rid}/features/metastasis", json={"verdict": "maybe"}).status_code == 422
+    r = c.put(f"/api/reads/{rid}/features/metastasis", json={"verdict": "disagree", "note": "  "}).json()
+    assert r["feature_reviews"] == [{"feature_id": "metastasis", "verdict": "disagree", "note": None}]
+    assert r["signout_missing"] == ["feature verdicts (1 of 2 left)"]
+    r = c.put(f"/api/reads/{rid}/features/irregular_nuclei", json={"verdict": "unsure", "note": "crush artefact"}).json()
+    assert r["signout_missing"] == []
+    assert c.post(f"/api/reads/{rid}/signout", json={"decision": "benign"}).status_code == 200
+    log = [e["action"] for e in c.get("/api/audit", params={"read_id": rid}).json()]
+    assert log.count("feature_reviewed") == 2
 
 
 def test_full_review_flow(client):
@@ -48,6 +88,9 @@ def test_full_review_flow(client):
     assert cov2["n_events"] == 2
     assert c.get(f"/api/reads/{rid}/coverage.png").headers["content-type"] == "image/png"
     c.post(f"/api/reads/{rid}/decision", json={"stage": "initial", "decision": "benign"})
+    c.put(f"/api/reads/{rid}/notes", json={"notes": "benign-appearing node"})
+    for f in bars:
+        c.put(f"/api/reads/{rid}/features/{f}", json={"verdict": "agree"})
     so = c.post(f"/api/reads/{rid}/signout", json={"decision": "benign"}).json()
     assert so["light"] in ("amber", "red") and so["thresholds"]["source"] == "default_unvalidated"
     assert len(so["regions"]) >= 1 and so["regions"][0]["alert_id"]
@@ -96,6 +139,39 @@ def test_routing_signal_follows_evaluation(bundle):
     con.close()
 
 
+def test_heavily_damaged_slide_goes_to_slow_path(bundle):
+    import pandas as pd
+
+    from secondlook.pipeline.export import assign_tiers
+    from secondlook.store import db
+    from secondlook.store.arrays import write_parquet
+
+    paths, _, _ = bundle
+    con = db.init_db(paths.db)
+    out = assign_tiers(con, paths)
+    row = db.one(con, "SELECT tier, tier_reasons, tissue_artifact_share FROM cases WHERE case_id=?", CASE)
+    assert row["tier"] == "fast" and row["tier_reasons"] is None
+    assert abs(row["tissue_artifact_share"] - 1 / 19) < 1e-6  # one ink column of 19: below the 10% cut-off
+    t = pd.read_parquet(paths.tiles(SLIDE))
+    t["art_blur"] = t["col"] <= 3  # two blurred columns + the ink column = 3/19 of tissue
+    write_parquet(t, paths.tiles(SLIDE))
+    out = assign_tiers(con, paths)
+    row = db.one(con, "SELECT tier, tier_reasons FROM cases WHERE case_id=?", CASE)
+    assert row["tier"] == "slow" and row["tier_reasons"] == "artifacts"
+    assert out["n_slow"] == 2 and out["n_slow_artifacts"] == 1
+    assert db.one(con, "SELECT tier_reasons FROM cases WHERE case_id=?", f"case_{SLOW_SLIDE}")["tier_reasons"] == "disagreement"
+    con.close()
+    from fastapi.testclient import TestClient
+
+    from secondlook.api import main
+    from secondlook.api.store import Store, set_store
+
+    set_store(Store(paths))
+    rows = {r["case_id"]: r for r in TestClient(main.app).get("/api/cases").json()}
+    assert rows[CASE]["tier_reasons"] == ["artifacts"]
+    assert TestClient(main.app).post("/api/reads", json={"case_id": CASE}).json()["review_mode"] == "blind"
+
+
 def test_replay_style_signout_does_not_touch_case_status(client):
     c, _, _ = client
     from secondlook.api.store import get_store
@@ -109,3 +185,32 @@ def test_replay_style_signout_does_not_touch_case_status(client):
     con.close()
     assert c.post("/api/reads/rp1/signout", json={"decision": "benign"}).status_code == 200
     assert {r["case_id"]: r["review_status"] for r in c.get("/api/cases").json()}[CASE] == "unread"
+
+
+def test_reopening_a_case_resumes_the_read_and_keeps_every_notes_version(client):
+    c, _, _ = client
+    r = c.post("/api/reads", json={"case_id": CASE}).json()
+    rid = r["read_id"]
+    assert not r["resumed"] and r["next_seq"] == 0
+    c.post(f"/api/reads/{rid}/events", json={"events": [{"seq": 0, "t_ms": 0, "x": 0, "y": 0, "w": 900, "h": 900, "zoom": 0.3},
+                                                         {"seq": 1, "t_ms": 2500, "x": 0, "y": 0, "w": 900, "h": 900, "zoom": 0.3}]})
+    c.put(f"/api/reads/{rid}/notes", json={"notes": "v1"})
+    c.put(f"/api/reads/{rid}/notes", json={"notes": "v1"})          # unchanged: no new version
+    c.put(f"/api/reads/{rid}/notes", json={"notes": "v2, edited"})
+    again = c.post("/api/reads", json={"case_id": CASE}).json()    # navigate away and come back
+    assert again["read_id"] == rid and again["resumed"] and again["notes"] == "v2, edited"
+    assert again["next_seq"] == 2 and again["last_t_ms"] == 2500    # new view events continue, not dropped as duplicates
+    hist = c.get(f"/api/reads/{rid}/history").json()
+    assert [(h["version"], h["text"]) for h in hist] == [(2, "v2, edited"), (1, "v1")]
+    c.post(f"/api/reads/{rid}/decision", json={"stage": "initial", "decision": "benign"})
+    c.put(f"/api/reads/{rid}/features/metastasis", json={"verdict": "agree"})
+    c.put(f"/api/reads/{rid}/features/metastasis", json={"verdict": "disagree", "note": "on second look"})
+    fh = c.get(f"/api/reads/{rid}/history", params={"feature_id": "metastasis"}).json()
+    assert [(h["verdict"], h["text"]) for h in fh] == [("disagree", "on second look"), ("agree", None)]
+    # editing after sign-out still works and is versioned
+    c.put(f"/api/reads/{rid}/features/irregular_nuclei", json={"verdict": "unsure"})
+    assert c.post(f"/api/reads/{rid}/signout", json={"decision": "benign"}).status_code == 200
+    c.put(f"/api/reads/{rid}/notes", json={"notes": "v3, after sign-out"})
+    assert len(c.get(f"/api/reads/{rid}/history").json()) == 3
+    assert c.post("/api/reads", json={"case_id": CASE, "resume": False}).json()["read_id"] != rid
+    assert "case_resumed" in [e["action"] for e in c.get("/api/audit", params={"read_id": rid}).json()]

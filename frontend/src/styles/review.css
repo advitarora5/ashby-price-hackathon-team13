@@ -191,3 +191,21 @@ figcaption { font-size: 12px; color: var(--c-text-2); font-family: var(--font-mo
 @container center (max-width: 760px) { .db-step { display: none; } }
 
 .region-box span:empty { display: none; }
+
+/* reader notes (Decision tab) */
+.notes-input { width: 100%; height: auto; min-height: 96px; max-height: 40vh; padding: 6px 8px; resize: vertical; line-height: 1.45; font-size: var(--fs-sm); }
+.notes-input[readonly] { background: var(--c-surface-2); }
+.note-history { list-style: none; margin: 0; padding: 8px 10px; max-height: 220px; overflow-y: auto; background: var(--c-surface-2); border: 1px solid var(--c-border); border-radius: var(--r-md); display: flex; flex-direction: column; gap: 8px; }
+.note-history-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.locked .btn { margin-top: 8px; }
+.queue-foot { padding: 4px 12px 12px; }
+
+/* the reader's verdict on each AI feature */
+.fv-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; align-items: center; margin-top: 4px; }
+.fv-seg .seg { height: 24px; padding: 0 8px; font-size: var(--fs-xs); }
+.fv-seg .seg.v-agree[aria-pressed='true'] { background: var(--c-green-tint); color: var(--c-green-ink); }
+.fv-seg .seg.v-disagree[aria-pressed='true'] { background: var(--c-red-tint); color: var(--c-red-ink); }
+.fv-seg .seg.v-unsure[aria-pressed='true'] { background: var(--c-amber-tint); color: var(--c-amber-ink); }
+.fv-seg .seg[aria-pressed='true'] { font-weight: var(--fw-semibold); box-shadow: inset 0 0 0 1.5px currentColor; }
+.fv-note { height: 24px; min-width: 0; padding: 0 6px; font-size: var(--fs-xs); }
+.signal .fv-row { margin-top: 6px; }

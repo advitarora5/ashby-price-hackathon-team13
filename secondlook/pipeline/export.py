@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from secondlook.config import SLOW_PATH_SHARE, BundlePaths
+from secondlook.config import ARTIFACT_SLOW_SHARE, SLOW_PATH_SHARE, BundlePaths
 from secondlook.store import db
 from secondlook.store.arrays import read_meta
 
@@ -61,17 +61,36 @@ def write_regions(con, slide_id: str, kind: str, regions, *, source: str, disagr
     return ids
 
 
+def tissue_artifact_share(paths: BundlePaths, slide_id: str) -> float | None:
+    """Share of tissue tiles flagged blur/ink/fold. Blank glass is not tissue, so it is excluded
+    from both sides; None when the slide's tiles are not in the bundle."""
+    p = paths.tiles(slide_id)
+    if not p.exists():
+        return None
+    import pandas as pd
+
+    t = pd.read_parquet(p, columns=["art_blank", "art_blur", "art_ink", "art_fold"])
+    tissue = ~t["art_blank"].to_numpy(bool)
+    if not tissue.any():
+        return None
+    bad = (t["art_blur"] | t["art_ink"] | t["art_fold"]).to_numpy(bool)
+    return float(bad[tissue].mean())
+
+
 def assign_tiers(con, paths: BundlePaths) -> dict:
     """Fast/slow tier per case. Uses the validation-derived cutoff when present; otherwise
-    falls back to rank-based top-15% and records that the cutoff is not validated."""
+    falls back to rank-based top-15% and records that the cutoff is not validated.
+    A case whose tissue is heavily damaged (blur/ink/fold on >= ARTIFACT_SLOW_SHARE of tissue
+    tiles) also goes to the slow path: the models are least trustworthy there."""
     cutoff, signal = None, "disagreement"
     if paths.thresholds.exists():
         th = json.loads(paths.thresholds.read_text())
         cutoff = th.get("tier_cutoff")
         signal = (th.get("routing_signal") or {}).get("signal", "disagreement")
     col = "uncertainty_score" if signal == "entropy" else "disagreement_score"
-    cases = [{"case_id": c["case_id"], "disagreement_score": c[col]}
-             for c in db.all_(con, f"SELECT case_id, {col} FROM cases")]
+    cases = [{"case_id": c["case_id"], "disagreement_score": c[col],
+              "artifacts": tissue_artifact_share(paths, c["slide_id"])}
+             for c in db.all_(con, f"SELECT case_id, slide_id, {col} FROM cases")]
     con.execute("UPDATE cases SET routing_signal=?", (signal,))
     scored = [c for c in cases if c["disagreement_score"] is not None]
     if cutoff is None and scored:
@@ -83,14 +102,25 @@ def assign_tiers(con, paths: BundlePaths) -> dict:
     else:
         slow = {c["case_id"] for c in scored if c["disagreement_score"] >= cutoff}
         rule = "validation_cutoff"
+    n_artifact = 0
     for c in cases:
-        if c["disagreement_score"] is None:
-            con.execute("UPDATE cases SET tier='unavailable', tier_rule='unavailable' WHERE case_id=?", (c["case_id"],))
+        reasons = [signal] if c["case_id"] in slow else []
+        if c["artifacts"] is not None and c["artifacts"] >= ARTIFACT_SLOW_SHARE:
+            reasons.append("artifacts")
+            n_artifact += 1
+        if reasons:
+            tier = "slow"
+        elif c["disagreement_score"] is None:
+            tier = "unavailable"
         else:
-            con.execute("UPDATE cases SET tier=?, tier_rule=? WHERE case_id=?",
-                        ("slow" if c["case_id"] in slow else "fast", rule, c["case_id"]))
+            tier = "fast"
+        con.execute("UPDATE cases SET tier=?, tier_rule=?, tier_reasons=?, tissue_artifact_share=? WHERE case_id=?",
+                    (tier, "unavailable" if tier == "unavailable" else rule, ",".join(reasons) or None, c["artifacts"],
+                     c["case_id"]))
     con.commit()
-    return {"rule": rule, "signal": signal, "cutoff": cutoff, "n_slow": len(slow), "n_cases": len(cases)}
+    n_slow = sum(1 for c in db.all_(con, "SELECT tier FROM cases") if c["tier"] == "slow")
+    return {"rule": rule, "signal": signal, "cutoff": cutoff, "n_slow": n_slow, "n_slow_artifacts": n_artifact,
+            "artifact_share_cutoff": ARTIFACT_SLOW_SHARE, "n_cases": len(cases)}
 
 
 def write_manifest(paths: BundlePaths, update: dict) -> dict:
@@ -104,3 +134,18 @@ def write_manifest(paths: BundlePaths, update: dict) -> dict:
     paths.manifest.parent.mkdir(parents=True, exist_ok=True)
     paths.manifest.write_text(json.dumps(m, indent=1, default=str))
     return m
+
+
+if __name__ == "__main__":
+    # Re-apply the tier rules to an existing bundle without re-running the pipeline:
+    #   python -m secondlook.pipeline.export retier
+    import sys
+
+    from secondlook.config import bundle_paths
+
+    if sys.argv[1:] != ["retier"]:
+        sys.exit("usage: python -m secondlook.pipeline.export retier")
+    _paths = bundle_paths()
+    _con = db.init_db(_paths.db)
+    print(assign_tiers(_con, _paths))
+    _con.close()

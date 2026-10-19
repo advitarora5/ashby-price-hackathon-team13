@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, Check, Crosshair, EyeOff, Lock, RotateCcw, ShieldCheck } from 'lucide-react'
+import { ArrowRight, Check, Crosshair, EyeOff, Lock, NotebookPen, RotateCcw, ShieldCheck } from 'lucide-react'
 import type { Decision, Read, Region } from '../../types'
 import { STEPS, currentStep, type WorkflowState } from '../../lib/workflow'
 import { Button, ButtonLink } from '../ui/Button'
@@ -16,6 +16,11 @@ interface Props {
   onNewRead: () => void
   onGoRegion: (r: Region) => void
   nextHref: string | null
+  /** the reader has typed notes (they are saved with the call, or before the check) */
+  hasNotes: boolean
+  /** what still has to be recorded before the sign-out check (from the server, notes excluded once typed) */
+  checkTodo: string[]
+  onOpenNotes: () => void
 }
 
 const DECISIONS: Decision[] = ['benign', 'suspicious', 'malignant']
@@ -33,8 +38,10 @@ function Choice({ value, onChange, label }: { value: Decision | null; onChange: 
  * One row, one step at a time. Consequential actions are two-step (choose, then record), so a stray
  * click never records a call or unlocks AI evidence. Long hints collapse away on narrow viewers.
  */
-export default function DecisionBar({ wf, read, busy, readOnly, unrevisited, onInitial, onRunCheck, onFinal, onNewRead, onGoRegion, nextHref }: Props) {
+export default function DecisionBar({ wf, read, busy, readOnly, unrevisited, onInitial, onRunCheck, onFinal, onNewRead, onGoRegion, nextHref, hasNotes, checkTodo, onOpenNotes }: Props) {
   const step = readOnly ? 5 : currentStep(wf)
+  const blind = read.review_mode === 'blind'
+  const needNotes = blind && !hasNotes
   const decision = (wf.confirmed ? read.final_decision : null) ?? read.initial_decision
   const [pick, setPick] = useState<Decision | null>(null)
   useEffect(() => { setPick(step === 3 ? (read.initial_decision as Decision | null) : null) }, [step, read.read_id, read.initial_decision])
@@ -59,13 +66,16 @@ export default function DecisionBar({ wf, read, busy, readOnly, unrevisited, onI
       {!readOnly && step === 0 && (
         <>
           <Choice value={pick} onChange={setPick} label="Your initial assessment" />
-          <Button variant="primary" size="sm" icon={Check} disabled={!pick || busy} onClick={() => pick && onInitial(pick)}>
+          <Button variant="primary" size="sm" icon={Check} disabled={!pick || busy || needNotes} onClick={() => pick && onInitial(pick)}
+            title={needNotes ? 'Write your notes first' : undefined}>
             {pick ? `Record ${cap(pick)}` : 'Record call'}
           </Button>
+          {needNotes && <Button variant="secondary" size="sm" icon={NotebookPen} onClick={onOpenNotes}>Write notes</Button>}
           <span className="db-prompt small">
-            {read.review_mode === 'blind'
-              ? (pick ? <span className="warn-text">Recording reveals AI evidence and cannot be undone.</span>
-                : <><EyeOff size={14} aria-hidden /><span>Your call first<span className="db-long">; AI evidence stays hidden until you record it</span>.</span></>)
+            {blind
+              ? (needNotes ? <><EyeOff size={14} aria-hidden /><span>Your notes and call first<span className="db-long">; AI evidence stays hidden until both are saved</span>.</span></>
+                : pick ? <span className="warn-text">Recording saves your notes, reveals AI evidence and cannot be undone.</span>
+                : <><EyeOff size={14} aria-hidden /><span>Now your call<span className="db-long">; AI evidence stays hidden until you record it</span>.</span></>)
               : <span className="db-long">Record your call; the evidence is already visible.</span>}
           </span>
         </>
@@ -73,8 +83,13 @@ export default function DecisionBar({ wf, read, busy, readOnly, unrevisited, onI
 
       {!readOnly && (step === 1 || step === 2) && (
         <>
-          <span className="db-prompt small"><span>Your call: <strong>{cap(decision)}</strong>.<span className="db-long"> Review the evidence and unseen areas, then run the check.</span></span></span>
-          <Button variant="primary" size="sm" icon={ShieldCheck} disabled={busy} onClick={onRunCheck}>Run research sign-out check</Button>
+          <span className="db-prompt small"><span>Your call: <strong>{cap(decision)}</strong>.
+            {checkTodo.length
+              ? <span className="warn-text"> Before the check: {checkTodo.join(', ')}.</span>
+              : <span className="db-long"> Review the evidence and unseen areas, then run the check.</span>}</span></span>
+          {checkTodo.includes('notes') && <Button variant="secondary" size="sm" icon={NotebookPen} onClick={onOpenNotes}>Write notes</Button>}
+          <Button variant="primary" size="sm" icon={ShieldCheck} disabled={busy || checkTodo.length > 0} onClick={onRunCheck}
+            title={checkTodo.length ? `Still needed: ${checkTodo.join(', ')}` : undefined}>Run research sign-out check</Button>
         </>
       )}
 

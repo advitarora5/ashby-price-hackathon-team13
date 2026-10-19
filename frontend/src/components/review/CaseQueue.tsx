@@ -48,7 +48,9 @@ export default function CaseQueue({ cases, selected, onSelect, error, maskScores
                 </span>
                 {!masked && <span className="qi-bar" aria-hidden><span style={{ width: `${(routing ?? 0) * 100}%` }} /></span>}
                 {entropy && !masked && <span className="qi-row qi-sub num">Disagreement {score(c.disagreement_score)}</span>}
-                {c.artifact_share !== null && c.artifact_share > ARTIFACT_FLAG && (
+                {c.tier_reasons.includes('artifacts') ? (
+                  <span className="qi-row qi-sub warn-text"><span><TriangleAlert size={12} aria-hidden /> Slow path: damaged tissue ({pct(c.tissue_artifact_share)} of tissue)</span></span>
+                ) : c.artifact_share !== null && c.artifact_share > ARTIFACT_FLAG && (
                   <span className="qi-row qi-sub warn-text"><span><TriangleAlert size={12} aria-hidden /> Artifacts on {pct(c.artifact_share)} of tiles</span></span>
                 )}
               </a>
@@ -56,6 +58,9 @@ export default function CaseQueue({ cases, selected, onSelect, error, maskScores
           )
         })}
       </ul>
+      {cases.some((c) => c.tier_reasons.includes('artifacts')) && (
+        <p className="xs muted queue-foot">Cases with blur, ink or folds on 10% or more of their tissue also go to the slow path.</p>
+      )}
     </div>
   )
 }

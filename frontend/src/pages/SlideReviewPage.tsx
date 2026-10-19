@@ -9,6 +9,7 @@ import UnseenTab from '../components/review/UnseenTab'
 import ModelTab from '../components/review/ModelTab'
 import DecisionTab from '../components/review/DecisionTab'
 import DecisionBar from '../components/review/DecisionBar'
+import NotesSection, { NOTES_ID } from '../components/review/NotesSection'
 import ReplayPanel from '../components/review/ReplayPanel'
 import ReviewToolbar, { type LayerKey, type Layers } from '../components/review/ReviewToolbar'
 import ShortcutHelp from '../components/review/ShortcutHelp'
@@ -19,7 +20,7 @@ import InfoTip from '../components/ui/InfoTip'
 import { ButtonLink } from '../components/ui/Button'
 import EmptyState from '../components/ui/EmptyState'
 import { href } from '../lib/router'
-import { absoluteTime, score, tissueLabel } from '../lib/format'
+import { absoluteTime, pct, score, tissueLabel } from '../lib/format'
 import { deriveActivity } from '../lib/activity'
 import { useRecolouredCoverage } from '../lib/coverageOverlay'
 import { disagreementEval } from '../lib/research'
@@ -27,7 +28,7 @@ import type { WorkflowState } from '../lib/workflow'
 import { routingScore } from '../lib/status'
 import type {
   AuditEvent, CaseDetail, CaseRow, Coverage, Decision, EvalDoc, Evidence, Light, PolicyRec, Read, Rect, Region,
-  ReplayStep, Signout, ViewEvent,
+  ReplayStep, Signout, Verdict, ViewEvent,
 } from '../types'
 
 const DEFAULT_LAYERS: Layers = { risk: true, disagreement: false, artifact: false, coverage: false, regions: true }
@@ -40,6 +41,7 @@ interface Snapshot {
   coverage: Coverage | null; checks: Signout[]; rec: PolicyRec | null; layers: Layers
   seq: number; t0: number; liveCoverage: Coverage | null; readNote: string | null; priorExposure: string | null
   confirmed: boolean; extraReads: { stage: string; decision: Decision }[]; tab: TabId; readOnly: boolean
+  notesDraft: string
 }
 
 interface Target { id: string; rect: Rect; label: string; what: string }
@@ -122,6 +124,11 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
   const [zoomMag, setZoomMag] = useState<number | null>(null)
   const [vStatus, setVStatus] = useState<ViewerStatus>({ state: 'loading' })
   const [replay, setReplay] = useState<{ active: boolean; follow: (Rect & { key: number }) | null; fix: { x: number; y: number } | null }>({ active: false, follow: null, fix: null })
+  const [notesDraft, setNotesDraft] = useState('')
+  const draftRef = useRef('')
+  draftRef.current = notesDraft
+  const readOnlyRef = useRef(false)
+  readOnlyRef.current = readOnly
   const controls = useRef<ViewerControls | null>(null)
   const liveCoverage = useRef<Coverage | null>(null)
   const queue = useRef<ViewEvent[]>([])
@@ -179,27 +186,57 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     return () => window.clearInterval(t)
   }, [flush])
 
+  /** Unsaved notes are saved (as a new version) when the reader switches case, reloads or closes the page. */
+  const saveDraftOnLeave = useCallback(() => {
+    const r = readRef.current
+    const text = draftRef.current
+    if (!r || r.source !== 'live' || readOnlyRef.current) return
+    if (text.trim() && text !== (r.notes ?? '')) api.saveNotesOnLeave(r.read_id, text)
+  }, [])
+  useEffect(() => {
+    window.addEventListener('pagehide', saveDraftOnLeave)
+    return () => window.removeEventListener('pagehide', saveDraftOnLeave)
+  }, [saveDraftOnLeave])
+
   // keep a live snapshot of the open case so switching cases never discards a read
   const snap = useRef<Snapshot | null>(null)
   snap.current = detail ? {
     detail, read, ev, evRegions, disputed, coverage, checks, rec, layers, confirmed, extraReads, tab, readOnly,
-    seq: seq.current, t0: t0.current, liveCoverage: liveCoverage.current, readNote, priorExposure,
+    seq: seq.current, t0: t0.current, liveCoverage: liveCoverage.current, readNote, priorExposure, notesDraft,
   } : null
 
   const resetFor = (id: string) => {
     setSelected(id); setDetail(null); setRead(null); setEv(null); setEvRegions([]); setDisputed([])
     setCoverage(null); setChecks([]); setRec(null); setLayers(DEFAULT_LAYERS); setReadNote(null); setPriorExposure(null)
-    setConfirmed(false); setExtraReads([]); setTab('evidence'); setReadOnly(false)
+    setConfirmed(false); setExtraReads([]); setTab('evidence'); setReadOnly(false); setNotesDraft('')
     liveCoverage.current = null
     seq.current = 0; t0.current = performance.now()
   }
 
-  /** Start a fresh read; flags (and audits) any earlier AI exposure on a blind read. */
-  const startRead = useCallback(async (id: string, aiSeenAt: string | null, prevAt: string | null) => {
-    const r = await api.createRead(id, blindAll)
+  /** Continue a read's view-event numbering and clock after the events already stored for it. */
+  const continueRead = (r: Read) => {
+    seq.current = r.next_seq
+    t0.current = performance.now() - r.last_t_ms
+    setNotesDraft(r.notes ?? '')
+    // blind and still hidden: the reader's notes come first
+    if (r.review_mode === 'blind' && !r.evidence_visible) setTab('decision')
+  }
+
+  /**
+   * Open a read: by default the server resumes this reader's latest live read of the case; `fresh` starts a
+   * separate one. A new blind read flags (and audits) any earlier AI exposure.
+   */
+  const startRead = useCallback(async (id: string, aiSeenAt: string | null, prevAt: string | null, fresh = false) => {
+    const r = await api.createRead(id, blindAll, !fresh)
     if (requested.current !== id) return null
+    continueRead(r)
     setRead(r)
-    if (r.review_mode === 'blind' && aiSeenAt) {
+    if (r.resumed) {
+      const msg = `Resumed your earlier read of this case${r.initial_decision ? ` (your call: ${r.initial_decision})` : ''}.`
+      setReadNote(msg); showToast(msg)
+      api.coverage(r.read_id).then((c) => { if (requested.current === id) { liveCoverage.current = c; setCoverage(c) } }).catch(() => undefined)
+      if (r.initial_decision) api.policy(r.read_id).then((p) => { if (requested.current === id) setRec(p) }).catch(() => undefined)
+    } else if (r.review_mode === 'blind' && aiSeenAt) {
       const msg = `AI evidence for this case was shown in an earlier read (${absoluteTime(aiSeenAt)}). This read is logged as blind-first, but your call may not be independent; this is noted in the audit log.`
       setPriorExposure(msg); setReadNote(msg); showToast(msg, 'warn')
       api.audit('note', { read_id: r.read_id, case_id: id, detail: { prior_ai_exposure: true, ai_seen_at: aiSeenAt } })
@@ -212,6 +249,7 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
 
   const openCase = useCallback(async (id: string) => {
     await flush()
+    saveDraftOnLeave()
     if (snap.current) sessions.current.set(snap.current.detail.case_id, snap.current)
     setActiveTarget(null); setFocus(null); setError(null); setZoomMag(null); setAllHidden(false); setInspectDim(false)
     setReplay({ active: false, follow: null, fix: null }); setReplaySignout(null); setToast(null)
@@ -221,8 +259,12 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
       setSelected(id); setDetail(saved.detail); setRead(saved.read); setEv(saved.ev); setEvRegions(saved.evRegions)
       setDisputed(saved.disputed); setCoverage(saved.coverage); setChecks(saved.checks); setRec(saved.rec)
       setLayers(saved.layers); setReadNote(saved.readNote); setPriorExposure(saved.priorExposure); setConfirmed(saved.confirmed)
-      setExtraReads(saved.extraReads); setTab(saved.tab); setReadOnly(saved.readOnly)
+      setExtraReads(saved.extraReads); setTab(saved.tab); setReadOnly(saved.readOnly); setNotesDraft(saved.notesDraft)
       seq.current = saved.seq; t0.current = saved.t0; liveCoverage.current = saved.liveCoverage
+      // notes may have been saved on leaving: refresh what the server holds for this read
+      if (saved.read?.source === 'live' && !saved.readOnly) {
+        api.read(saved.read.read_id).then((r) => { if (requested.current === id) setRead(r) }).catch(() => undefined)
+      }
       return
     }
     resetFor(id)
@@ -239,8 +281,8 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
         // another session or a reload: resume the latest read of a case still in progress
         const cov = await api.coverage(prev.read_id).catch(() => null)
         if (requested.current !== id) return
+        continueRead(prev)
         setRead(prev); setCoverage(cov); liveCoverage.current = cov
-        seq.current = (cov?.n_events ?? 0) + 1
         const msg = `Resumed the read opened ${act?.lastReadOpenedAt ? absoluteTime(act.lastReadOpenedAt) : 'earlier'}${prev.initial_decision ? ` (your call: ${prev.initial_decision})` : ''}.`
         setReadNote(msg); showToast(msg)
         await loadEvidence(id, prev)
@@ -249,7 +291,7 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
         // completed: show the recorded outcome read-only; a new read is an explicit choice
         const [cov, unseen] = await Promise.all([api.coverage(prev.read_id).catch(() => null), api.regions(id, 'unseen', prev.read_id).catch(() => null)])
         if (requested.current !== id) return
-        setRead(prev); setCoverage(cov); liveCoverage.current = cov; setReadOnly(true); setConfirmed(!!prev.final_decision)
+        setRead(prev); setCoverage(cov); liveCoverage.current = cov; setReadOnly(true); setConfirmed(!!prev.final_decision); setNotesDraft(prev.notes ?? '')
         setChecks(checksFromAudit(events, prev.read_id, unseen?.regions ?? [], cov?.mode ?? 'viewport'))
         const msg = `Completed case: showing the recorded read from ${act?.lastReadOpenedAt ? absoluteTime(act.lastReadOpenedAt) : 'earlier'} (read-only).`
         setReadNote(msg); showToast(msg)
@@ -263,7 +305,7 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e))
     }
-  }, [flush, loadEvidence, onCasesChanged, startRead, showToast])
+  }, [flush, loadEvidence, onCasesChanged, startRead, showToast, saveDraftOnLeave])
 
   const startNewRead = () => guard(async () => {
     if (!selected) return
@@ -271,9 +313,14 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     const act = deriveActivity(events)[selected]
     resetFor(selected)
     setDetail(snap.current?.detail ?? (await api.case(selected)))
-    await startRead(selected, act?.aiSeenAt ?? null, act?.lastReadOpenedAt ?? null)
+    await startRead(selected, act?.aiSeenAt ?? null, act?.lastReadOpenedAt ?? null, true)
     onCasesChanged()
   })
+
+  const openNotes = useCallback(() => {
+    setTab('decision'); setSideOpen(true)
+    window.setTimeout(() => document.getElementById(NOTES_ID)?.focus(), 50)
+  }, [])
 
   // route-driven: #/review/<id> opens that case once (guard survives StrictMode double effects)
   useEffect(() => {
@@ -310,6 +357,7 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     setAllHidden(false)
     setCoverage(await api.coverage(r.read_id))
     setRec(await api.policy(r.read_id))
+    api.read(r.read_id).then((x) => { if (readRef.current?.read_id === x.read_id) setRead(x) }).catch(() => undefined) // signed_out_at
     setTab(s.regions.length || d === 'benign' ? 'unseen' : 'decision'); setSideOpen(true)
     if (s.regions[0]) jump(s.regions[0], `alert:${s.regions[0].region_id}`)
     onCasesChanged()
@@ -320,24 +368,55 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     try { await fn() } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
 
+  /** Save the typed notes when they differ from the server's copy (or were never saved). */
+  const saveDraft = async (r: Read) => {
+    const text = draftRef.current
+    if (!text.trim() || (text === (r.notes ?? '') && r.notes_saved_at)) return r
+    const out = await api.saveNotes(r.read_id, text)
+    setRead(out)
+    return out
+  }
+
+  const revealIfUnlocked = async (wasHidden: boolean | undefined, r: Read, what: string) => {
+    if (!selected) return
+    if (wasHidden && r.evidence_visible) {
+      await loadEvidence(selected, r); setTab('evidence'); setSideOpen(true)
+      setAnnounce(`${what} AI evidence is now shown in the Evidence tab.`)
+      window.setTimeout(() => document.getElementById('rv-tab-evidence')?.focus(), 50)
+    } else setAnnounce(what)
+  }
+
+  // blind read: the notes and the call together unlock the AI evidence, so recording the call saves the notes first
   const recordInitial = (d: Decision) => guard(async () => {
     if (!read || !selected) return
     const wasHidden = ev?.hidden
-    const r = await api.decision(read.read_id, 'initial', d)
+    const saved = await saveDraft(read)
+    const r = await api.decision(saved.read_id, 'initial', d)
     setRead(r)
-    if (wasHidden && r.evidence_visible) {
-      await loadEvidence(selected, r); setTab('evidence'); setSideOpen(true)
-      setAnnounce(`Your call, ${d}, is recorded. AI evidence is now shown in the Evidence tab.`)
-      window.setTimeout(() => document.getElementById('rv-tab-evidence')?.focus(), 50)
-    } else setAnnounce(`Your call, ${d}, is recorded.`)
+    await revealIfUnlocked(wasHidden, r, `Your call, ${d}, is recorded.`)
     setRec(await api.policy(r.read_id))
     onCasesChanged()
   })
 
+  const saveNotes = () => guard(async () => {
+    if (!read) return
+    const wasHidden = ev?.hidden
+    const r = await saveDraft(read)
+    await revealIfUnlocked(wasHidden, r, 'Notes saved.')
+    if (wasHidden && r.evidence_visible) setRec(await api.policy(r.read_id))
+  })
+
+  const reviewFeature = useCallback(async (feature: string, verdict: Verdict, note: string) => {
+    const r = readRef.current
+    if (!r) return
+    try { setRead(await api.reviewFeature(r.read_id, feature, verdict, note)) } catch (e) { setError((e as Error).message) }
+  }, [])
+
   const runCheck = () => guard(async () => {
     if (!read) return
-    const d = read.final_decision ?? read.initial_decision
-    if (d) await doSignout(read, d)
+    const r = await saveDraft(read)
+    const d = r.final_decision ?? r.initial_decision
+    if (d) await doSignout(r, d)
   })
 
   const recordFinal = (d: Decision) => guard(async () => {
@@ -442,7 +521,10 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
   const routing = detail ? routingScore(detail) : null
   const evalResult = disagreementEval(evalDocs)
   const minMag = coverage?.params.min_magnification ?? 10
-  const blindPending = !!read && read.review_mode === 'blind' && !read.initial_decision
+  const blindPending = !!read && read.review_mode === 'blind' && !read.evidence_visible
+  const hasNotes = notesDraft.trim().length > 0
+  // typed notes count: they are saved automatically before the check runs
+  const checkTodo = read && !readOnly ? read.signout_missing.filter((m) => m !== 'assessment' && !(m === 'notes' && hasNotes)) : []
 
   const toggleLayer = useCallback((k: LayerKey, on: boolean) => {
     setLayers((l) => ({ ...l, [k]: on }))
@@ -530,6 +612,11 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     <>
       <h1 className="mono">{detail.slide_id}</h1>
       <StatusBadge kind="tier" value={detail.tier} />
+      {detail.tier_reasons.includes('artifacts') && (
+        <span className="badge tone-warning" title={`Slow path because of damaged tissue: blur, ink or folds on ${pct(detail.tissue_artifact_share)} of the tissue`}>
+          <TriangleAlert size={13} aria-hidden /><span className="tb-label">Damaged tissue</span>
+        </span>
+      )}
       {modeChip}
       {priorExposure && <span className="badge tone-warning" title={priorExposure}><TriangleAlert size={13} aria-hidden /><span className="tb-label">AI seen earlier</span></span>}
       {readOnly && <span className="badge tone-success" title="Completed case shown read-only">Completed · read-only</span>}
@@ -622,7 +709,8 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
               <DecisionBar wf={wf} read={read} busy={busy} readOnly={readOnly} unrevisited={unrevisited}
                 onInitial={recordInitial} onRunCheck={runCheck} onFinal={recordFinal} onNewRead={startNewRead}
                 onGoRegion={(r) => jump(r, `alert:${r.region_id}`)}
-                nextHref={nextOpen ? href({ page: 'review', caseId: nextOpen.case_id }) : null} />
+                nextHref={nextOpen ? href({ page: 'review', caseId: nextOpen.case_id }) : null}
+                hasNotes={hasNotes} checkTodo={checkTodo} onOpenNotes={openNotes} />
             )}
           </>
         )}
@@ -639,11 +727,13 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
               <div className="side-body" role="tabpanel" id="rv-panel" aria-labelledby={`rv-tab-${tab}`} tabIndex={0}>
                 {tab === 'evidence' && (
                   <EvidenceTab ev={ev} loading={evLoading} replaying={replay.active} evidenceRegions={evRegions} onJump={jump}
-                    activeTarget={activeTarget} evalDocs={evalDocs} />
+                    activeTarget={activeTarget} evalDocs={evalDocs}
+                    reviews={read && read.source === 'live' && read.evidence_visible && !readOnly ? read.feature_reviews : null}
+                    reviewKey={read?.read_id ?? ''} onReview={reviewFeature} onOpenNotes={openNotes} />
                 )}
                 {tab === 'unseen' && (
                   <UnseenTab coverage={coverage} latest={latestCheck} alertCheck={alertCheck} onJump={jump} activeAlert={activeTarget} zoomMag={zoomMag}
-                    canRunCheck={!!read?.initial_decision && !busy && !replay.active && !readOnly} onRunCheck={runCheck} replayActive={replay.active}
+                    canRunCheck={!!read?.initial_decision && !busy && !replay.active && !readOnly} checkTodo={checkTodo} onRunCheck={runCheck} replayActive={replay.active}
                     finalDecision={confirmed ? read?.final_decision ?? null : null}
                     replay={<ReplayPanel caseId={detail.case_id} onStep={onReplayStep} onStart={onReplayStart} onStop={onReplayStop}
                       locked={!read || !read.initial_decision} />} />
@@ -655,7 +745,11 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
                 {tab === 'decision' && (
                   <DecisionTab wf={wf} read={read} latest={latestCheck} alertCheck={alertCheck} rec={replay.active ? null : rec} tierSlow={detail.tier === 'slow'}
                     routingSignal={detail.routing_signal} extraReads={extraReads} onSecondRead={secondRead} confirmed={confirmed}
-                    priorExposure={priorExposure} readOnly={readOnly} />
+                    priorExposure={priorExposure} readOnly={readOnly}
+                    notes={read && read.source === 'live' && !replay.active ? (
+                      <NotesSection read={read} draft={notesDraft} onDraft={setNotesDraft} onSave={saveNotes} busy={busy}
+                        readOnly={readOnly} evidenceHidden={!read.evidence_visible} />
+                    ) : null} />
                 )}
               </div>
             </>
