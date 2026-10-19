@@ -331,11 +331,15 @@ def get_encoder(name: str) -> Encoder:
 
 
 def available_models(names) -> list[str]:
+    """Encoders that load. With SECONDLOOK_STRICT_MODELS=1 a model that does not load stops the
+    run instead of being skipped, so a paid GPU run never finishes without a requested model."""
     ok = []
     for n in names:
         try:
             get_encoder(n)
             ok.append(n)
         except ModelUnavailable as e:
+            if os.environ.get("SECONDLOOK_STRICT_MODELS") == "1":
+                raise SystemExit(f"[embed] {n} did not load and SECONDLOOK_STRICT_MODELS=1: {e}")
             print(f"[embed] skipping {n}: {e}")
     return ok
