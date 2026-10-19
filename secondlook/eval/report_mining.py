@@ -65,7 +65,8 @@ def extract(reports: Path, n: int, workers: int = 4) -> Path:
     version, findings = clef.load_findings()
     client = clef.get_client()
     df = sample(load_reports(reports), n)
-    done = pd.read_parquet(out) if out.exists() else pd.DataFrame(columns=["report_id"])
+    done = pd.read_parquet(out) if out.exists() else pd.DataFrame(columns=["report_id", "findings_version"])
+    done = done[done.findings_version == version]          # reports read with older questions are read again
     todo = df[~df.report_id.isin(set(done.report_id))]
     print(f"{len(todo)} reports to read ({len(df) - len(todo)} cached) with {client.model}")
 

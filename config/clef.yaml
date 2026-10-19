@@ -5,11 +5,11 @@
 #          none = the AI on this slide cannot check it (shown as "cannot check").
 # keywords: only for the keyword baseline in eval/report_mining.py (Clef never sees them).
 # Wording to be checked by the on-site expert.
-version: clef_findings_v1
+version: clef_findings_v2
 findings:
   - id: metastasis
     feature: metastasis
-    about: metastatic carcinoma (tumour deposits) in the lymph node or tissue
+    about: metastatic carcinoma (tumour deposits) in a lymph node or at a distant site
     keywords: ['metasta', 'carcinoma in lymph node', 'positive lymph node', 'nodal deposit']
   - id: tumor_epithelium
     feature: tumor_epithelium
@@ -65,5 +65,5 @@ findings:
     keywords: ['perineural']
   - id: margins
     feature: none
-    about: surgical margin status
-    keywords: ['margin']
+    about: tumour at a surgical margin (a positive margin)
+    keywords: ['margin involved', 'positive margin', 'margin positive', 'tumor at margin', 'tumour at margin', 'extends to margin', 'margin is involved', 'margins are involved']
