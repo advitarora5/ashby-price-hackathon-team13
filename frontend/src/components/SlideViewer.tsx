@@ -15,7 +15,7 @@ export interface ViewportReport { x: number; y: number; w: number; h: number; zo
 interface Props {
   detail: CaseDetail
   layers: LayerSpec[]
-  boxes: { region: Region; tone: 'evidence' | 'disputed' | 'unseen' | 'selected'; label: string }[]
+  boxes: { region: Region; tone: 'evidence' | 'disputed' | 'unseen' | 'selected' | 'context'; label: string }[]
   focus: { rect: Rect; key: number } | null
   follow: (Rect & { key: number }) | null
   fixation: { x: number; y: number } | null

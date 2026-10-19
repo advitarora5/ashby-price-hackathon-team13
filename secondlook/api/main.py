@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI
@@ -52,6 +53,12 @@ def eval_summary(store: Store = Depends(get_store)):
 
 for r in (meta, disagreement.router, evidence.router, coverage.router, policy.router, audit.router, replay.router):
     app.include_router(r, prefix="/api")
+
+# optional spatial-context feature; SECONDLOOK_CONTEXT=0 turns it off (see secondlook/pipeline/context.py)
+if os.environ.get("SECONDLOOK_CONTEXT", "1") != "0":
+    from secondlook.api.services import context
+
+    app.include_router(context.router, prefix="/api")
 
 _dist = REPO_ROOT / "frontend" / "dist"
 if _dist.exists():

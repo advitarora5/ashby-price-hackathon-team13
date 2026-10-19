@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError } from './api'
 import CaseQueue from './components/CaseQueue'
+import ContextPanel from './components/ContextPanel'
 import EvalView from './components/EvalView'
 import EvidencePanel from './components/EvidencePanel'
 import PolicyPanel from './components/PolicyPanel'
@@ -45,6 +46,7 @@ export default function App() {
   const [layers, setLayers] = useState<Layers>({ risk: true, disagreement: false, artifact: false, coverage: false, regions: true })
   const [focus, setFocus] = useState<{ rect: Rect; key: number } | null>(null)
   const [activeAlert, setActiveAlert] = useState<string | null>(null)
+  const [ctxBoxes, setCtxBoxes] = useState<{ rects: Rect[]; label: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [replay, setReplay] = useState<{ active: boolean; follow: (Rect & { key: number }) | null; fix: { x: number; y: number } | null }>({ active: false, follow: null, fix: null })
   const liveCoverage = useRef<Coverage | null>(null)
@@ -101,10 +103,10 @@ export default function App() {
     return () => window.clearInterval(t)
   }, [flush])
 
-  const openCase = useCallback(async (id: string) => {
+  const openCase = useCallback(async (id: string, at?: { tile: string; rect: Rect }) => {
     await flush()
     setSelected(id); setDetail(null); setRead(null); setEv(null); setEvRegions([]); setDisputed([])
-    setCoverage(null); setSignout(null); setRec(null); setError(null); setActiveAlert(null)
+    setCoverage(null); setSignout(null); setRec(null); setError(null); setActiveAlert(null); setCtxBoxes(null)
     setReplay({ active: false, follow: null, fix: null })
     queue.current = []; seq.current = 0; t0.current = performance.now()
     try {
@@ -116,6 +118,7 @@ export default function App() {
       t0.current = performance.now() - r.last_t_ms
       setRead(r)
       await loadEvidence(id, r)
+      if (at) { await loadEvidence(id, r, { tile: at.tile }); setFocus({ rect: at.rect, key: Date.now() }) }
       if (r.resumed) {
         api.coverage(r.read_id).then((c) => { liveCoverage.current = c; setCoverage(c) }).catch(() => undefined)
         if (r.initial_decision) api.policy(r.read_id).then(setRec).catch(() => undefined)
@@ -241,16 +244,18 @@ export default function App() {
   }, [detail, layers, evidenceVisible, read, coverage, replay.active])
 
   const boxes = useMemo(() => {
-    const out: { region: Region; tone: 'evidence' | 'disputed' | 'unseen' | 'selected'; label: string }[] = []
+    const out: { region: Region; tone: 'evidence' | 'disputed' | 'unseen' | 'selected' | 'context'; label: string }[] = []
     if (evidenceVisible && layers.regions && !replay.active) {
       evRegions.slice(0, 3).forEach((r) => out.push({ region: r, tone: 'evidence', label: `risk ${Math.round((r.risk ?? 0) * 100)}%` }))
       if (layers.disagreement) disputed.slice(0, 3).forEach((r) => out.push({ region: r, tone: 'disputed', label: 'disputed' }))
     }
     signout?.regions.forEach((r) => out.push({ region: r, tone: 'unseen', label: `unviewed · ${Math.round((r.risk ?? 0) * 100)}%` }))
+    if (ctxBoxes && evidenceVisible && !replay.active)
+      ctxBoxes.rects.forEach((r, i) => out.push({ region: { ...r, region_id: `ctx${i}`, kind: 'context', rank: i, risk: null, disagreement: null, n_tiles: 1, peak_tile_id: null, source: null }, tone: 'context', label: i ? '' : ctxBoxes.label }))
     if (ev?.tile_rect && evidenceVisible && !replay.active)
       out.push({ region: { ...ev.tile_rect, region_id: 'tile', kind: 'tile', rank: 0, risk: null, disagreement: null, n_tiles: 1, peak_tile_id: null, source: null }, tone: 'selected', label: '' })
     return out
-  }, [evRegions, disputed, signout, ev, evidenceVisible, layers, replay.active])
+  }, [evRegions, disputed, signout, ev, evidenceVisible, layers, replay.active, ctxBoxes])
 
   return (
     <div className="app">
@@ -323,6 +328,14 @@ export default function App() {
                 <EvidencePanel ev={replay.active ? null : ev} loading={evLoading} evidenceRegions={evRegions} disputed={disputed} onJump={jump}
                   reviews={read && read.source === 'live' && read.evidence_visible ? read.feature_reviews : null}
                   reviewKey={read?.read_id ?? ''} onReview={reviewFeature} />
+                <ContextPanel caseId={detail.case_id} readId={read?.read_id} tileId={ev?.tile_id ?? null} hidden={!evidenceVisible || replay.active}
+                  onShowTiles={(rects, label) => {
+                    setCtxBoxes({ rects, label })
+                    if (!rects.length) return
+                    const x = Math.min(...rects.map((r) => r.x)), y = Math.min(...rects.map((r) => r.y))
+                    setFocus({ rect: { x, y, w: Math.max(...rects.map((r) => r.x + r.w)) - x, h: Math.max(...rects.map((r) => r.y + r.h)) - y }, key: Date.now() })
+                  }}
+                  onOpenMatch={(c, tile, r) => openCase(c, { tile, rect: { x: r.x - 6 * r.w, y: r.y - 6 * r.h, w: 13 * r.w, h: 13 * r.h } })} />
                 <UnseenPanel coverage={coverage} signout={signout} onJump={jump} activeAlert={activeAlert} />
                 <PolicyPanel rec={replay.active ? null : rec} summary={summary} tierSlow={detail.tier === 'slow'} onSecondRead={secondRead} />
                 <ReplayPanel caseId={detail.case_id} onStep={onReplayStep} onStart={onReplayStart} onStop={onReplayStop} />
