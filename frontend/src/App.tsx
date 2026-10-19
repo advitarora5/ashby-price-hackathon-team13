@@ -5,6 +5,7 @@ import { useRoute, type Page } from './lib/router'
 import { needsAttention } from './lib/status'
 import { deriveActivity, type CaseActivity } from './lib/activity'
 import { BRAND } from './brand'
+import { finishBoot } from './lib/boot'
 import OverviewPage from './pages/OverviewPage'
 import CasesPage from './pages/CasesPage'
 import ResearchPage from './pages/ResearchPage'
@@ -67,6 +68,11 @@ export default function App() {
     setVisited((v) => (v.has(route.page) ? v : new Set(v).add(route.page)))
     if (route.page === 'review' && route.caseId) setReviewCaseId(route.caseId)
   }, [route])
+
+  // hand over from the boot screen once the case list has answered, either way
+  useEffect(() => {
+    if (casesLoaded) finishBoot(casesErr ? 'Backend unreachable' : 'Ready')
+  }, [casesLoaded, casesErr])
 
   useEffect(() => {
     document.title = `${PAGE_TITLES[route.page]}${route.page === 'review' && reviewCaseId ? ` · ${reviewCaseId.replace('case_', '')}` : ''} · ${BRAND.name}`

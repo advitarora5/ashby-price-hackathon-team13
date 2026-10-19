@@ -8,6 +8,7 @@ import './styles/shell.css'
 import './styles/pages.css'
 import './styles/review.css'
 import './styles/workspace.css'
+import './styles/research.css'
 import App from './App'
 
 createRoot(document.getElementById('root')!).render(
