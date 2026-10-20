@@ -162,7 +162,7 @@ def run() -> dict:
             caveats.append("Tiering therefore uses single-model entropy (the stronger baseline); disagreement is still shown.")
     doc = {"title": "Disagreement routing catches model mistakes", "measure": "#2 routing",
            "dataset": "NCT-CRC-HE test tiles; CAMELYON16 test-slide tiles", "headline": head,
-           "caveats": caveats + ["Models: QuiltNet and PLIP only (PathGen-CLIP gated; CONCH/MUSK not approved)."],
+           "caveats": caveats + [f"Models compared: {PRIMARY_MODEL} and {SECONDARY_MODEL}."],
            "nct": a, "camelyon16": b, "routing_signal": routing}
     return write_eval(bundle_paths().eval_dir / "disagreement.json", doc)
 

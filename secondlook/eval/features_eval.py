@@ -107,8 +107,8 @@ def run() -> dict:
     if c.get("available"):
         m = c["median_auroc"]
         head += [
-            {"label": "Median per-feature AUROC, text prompt only (QuiltNet)", "value": f"{m['text_raw_auroc']:.3f}", "status": "info"},
-            {"label": "Median per-feature AUROC, tissue probe (QuiltNet)", "value": f"{m['probe_auroc']:.3f}", "status": "info"},
+            {"label": f"Median per-feature AUROC, text prompt only ({PRIMARY_MODEL})", "value": f"{m['text_raw_auroc']:.3f}", "status": "info"},
+            {"label": f"Median per-feature AUROC, tissue probe ({PRIMARY_MODEL})", "value": f"{m['probe_auroc']:.3f}", "status": "info"},
             {"label": "Median AUROC, ImageNet ViT control probe", "value": f"{m['imagenet_probe_auroc']:.3f}" if m.get("imagenet_probe_auroc") else "n/a"},
             {"label": "Median AUROC, colour-histogram control probe", "value": f"{m['colorhist_probe_auroc']:.3f}" if m.get("colorhist_probe_auroc") else "n/a"},
         ]

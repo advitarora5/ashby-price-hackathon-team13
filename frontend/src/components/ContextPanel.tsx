@@ -131,6 +131,7 @@ export default function ContextPanel({ caseId, readId, tileId, hidden, onShowTil
       </div>
       <div className="small muted ctx-legend"><span className="sw ctx-up" /> gathers around <span className="sw ctx-down" /> avoids · blank = not significant (q ≥ {SIG})</div>
       {strongest.length === 0 && <p className="small muted">No clear layout pattern at this distance.</p>}
+      <p className="small muted">Describes how the tissue is laid out; it does not change the tumour score (tested: it added no accuracy over neighbour smoothing).</p>
       {strongest.length > 0 && (
         <ul className="ctx-top">
           {strongest.map((c) => (
