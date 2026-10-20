@@ -1,0 +1,69 @@
+# Findings Clef reads from free text (a reader's notes or a pathology report).
+# Each finding becomes one three-way question: present / absent / not mentioned.
+#
+# feature: the SecondLook feature bar the finding is checked against on the slide;
+#          none = the AI on this slide cannot check it (shown as "cannot check").
+# keywords: only for the keyword baseline in eval/report_mining.py (Clef never sees them).
+# Wording to be checked by the on-site expert.
+version: clef_findings_v2
+findings:
+  - id: metastasis
+    feature: metastasis
+    about: metastatic carcinoma (tumour deposits) in a lymph node or at a distant site
+    keywords: ['metasta', 'carcinoma in lymph node', 'positive lymph node', 'nodal deposit']
+  - id: tumor_epithelium
+    feature: tumor_epithelium
+    about: malignant tumour epithelium or carcinoma cells
+    keywords: ['carcinoma', 'adenocarcinoma', 'malignant epithel', 'tumor cells', 'tumour cells']
+  - id: lymphocytes
+    feature: lymphocytes
+    about: dense lymphocytes, lymphoid tissue or a lymphocytic infiltrate
+    keywords: ['lymphocyt', 'lymphoid', 'lymphocytic infiltrat']
+  - id: necrosis_debris
+    feature: necrosis_debris
+    about: necrosis or necrotic debris
+    keywords: ['necros', 'necrotic']
+  - id: stroma
+    feature: stroma
+    about: fibrous or desmoplastic stroma
+    keywords: ['stroma', 'desmoplas', 'fibrous']
+  - id: mucus
+    feature: mucus
+    about: mucin or mucus
+    keywords: ['mucin', 'mucinous', 'mucus']
+  - id: muscle
+    feature: muscle
+    about: smooth muscle
+    keywords: ['smooth muscle', 'muscularis']
+  - id: fat
+    feature: fat
+    about: fat or adipose tissue
+    keywords: ['adipose', 'fat', 'fatty']
+  - id: normal_glands
+    feature: normal_glands
+    about: normal or benign glands or mucosa
+    keywords: ['benign gland', 'normal gland', 'normal mucosa', 'benign mucosa']
+  - id: irregular_nuclei
+    feature: irregular_nuclei
+    about: nuclear atypia or pleomorphism (large, irregular nuclei)
+    keywords: ['pleomorph', 'atypi', 'nuclear grade']
+  - id: mitoses
+    feature: mitoses
+    about: mitotic figures or mitotic activity
+    keywords: ['mitos', 'mitotic']
+  - id: lymphovascular_invasion
+    feature: none
+    about: lymphovascular invasion
+    keywords: ['lymphovascular', 'angiolymphatic', 'vascular invasion', 'lymphatic invasion']
+  - id: extranodal_extension
+    feature: none
+    about: extranodal (extracapsular) extension of tumour
+    keywords: ['extranodal', 'extracapsular']
+  - id: perineural_invasion
+    feature: none
+    about: perineural invasion
+    keywords: ['perineural']
+  - id: margins
+    feature: none
+    about: tumour at a surgical margin (a positive margin)
+    keywords: ['margin involved', 'positive margin', 'margin positive', 'tumor at margin', 'tumour at margin', 'extends to margin', 'margin is involved', 'margins are involved']

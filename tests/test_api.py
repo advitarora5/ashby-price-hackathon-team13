@@ -1,4 +1,5 @@
 """End-to-end API flow on the synthetic test bundle (see conftest)."""
+from secondlook.store import db
 from tests.conftest import CASE, SLIDE, SLOW_SLIDE
 
 
@@ -214,3 +215,77 @@ def test_reopening_a_case_resumes_the_read_and_keeps_every_notes_version(client)
     assert len(c.get(f"/api/reads/{rid}/history").json()) == 3
     assert c.post("/api/reads", json={"case_id": CASE, "resume": False}).json()["read_id"] != rid
     assert "case_resumed" in [e["action"] for e in c.get("/api/audit", params={"read_id": rid}).json()]
+
+
+def _ready_to_sign_out(c, case=CASE, decision="benign"):
+    """A live read with notes, an assessment and a verdict on every feature bar."""
+    rid = c.post("/api/reads", json={"case_id": case}).json()["read_id"]
+    c.post(f"/api/reads/{rid}/decision", json={"stage": "initial", "decision": decision})
+    c.put(f"/api/reads/{rid}/notes", json={"notes": "own notes"})
+    for f in ("metastasis", "irregular_nuclei"):
+        c.put(f"/api/reads/{rid}/features/{f}", json={"verdict": "agree"})
+    return rid
+
+
+def test_signout_must_match_the_recorded_assessment(client):
+    c, _, _ = client
+    rid = _ready_to_sign_out(c, decision="malignant")
+    bad = c.post(f"/api/reads/{rid}/signout", json={"decision": "benign"})
+    assert bad.status_code == 409 and "malignant" in bad.json()["detail"]
+    assert c.get(f"/api/reads/{rid}").json()["signed_out_at"] is None            # the refused call changed nothing
+    assert c.post(f"/api/reads/{rid}/signout", json={"decision": "malignant"}).status_code == 200
+    # a changed mind is recorded first; then sign-out follows the final assessment, not the first one
+    c.post(f"/api/reads/{rid}/decision", json={"stage": "final", "decision": "benign"})
+    assert c.post(f"/api/reads/{rid}/signout", json={"decision": "malignant"}).status_code == 409
+    assert c.post(f"/api/reads/{rid}/signout", json={"decision": "benign"}).status_code == 200
+
+
+def test_policy_recommendation_stays_hidden_until_the_blind_gate_opens(client):
+    c, _, _ = client
+    case = f"case_{SLOW_SLIDE}"
+    rid = c.post("/api/reads", json={"case_id": case}).json()["read_id"]
+    assert c.get(f"/api/reads/{rid}/policy").status_code == 409                    # no assessment yet
+    c.post(f"/api/reads/{rid}/decision", json={"stage": "initial", "decision": "benign"})
+    hidden = c.get(f"/api/reads/{rid}/policy")
+    assert hidden.status_code == 403 and "notes" in hidden.json()["detail"]
+    assert "ai_flag_source" not in hidden.json()                                   # nothing about the AI leaks
+    c.put(f"/api/reads/{rid}/notes", json={"notes": "my own look first"})
+    assert c.get(f"/api/reads/{rid}/policy").status_code == 200
+
+
+def test_concurrent_signouts_get_distinct_attempts(client):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from secondlook.api.store import get_store
+    from secondlook.store import db
+
+    c, _, _ = client
+    rid = _ready_to_sign_out(c)
+    with ThreadPoolExecutor(6) as pool:
+        codes = list(pool.map(lambda _: c.post(f"/api/reads/{rid}/signout", json={"decision": "benign"}).status_code,
+                              range(6)))
+    assert codes == [200] * 6
+    con = get_store().con()
+    attempts = [r["detail"] for r in db.all_(con, "SELECT detail FROM audit_events WHERE read_id=? AND action='signout_check'", rid)]
+    n = db.one(con, "SELECT signout_attempts n FROM reads WHERE read_id=?", rid)["n"]
+    con.close()
+    import json as _json
+
+    assert n == 6 and sorted(_json.loads(a)["attempt"] for a in attempts) == [1, 2, 3, 4, 5, 6]
+
+
+def test_slide_file_is_found_next_to_the_bundle_when_scored_elsewhere(bundle, monkeypatch):
+    """The DB keeps the path from the scoring machine; a teammate's copy keeps slides in <data>/slides."""
+    from secondlook.api.store import Store
+
+    paths, _, _ = bundle
+    monkeypatch.delenv("SECONDLOOK_SLIDES", raising=False)
+    con = db.connect(paths.db)
+    con.execute("UPDATE slides SET image_path=? WHERE slide_id=?", (f"/home/ubuntu/data/raw/camelyon16/images/{SLIDE}.tif", SLIDE))
+    con.commit()
+    con.close()
+    store = Store(paths)
+    assert store.image_path(SLIDE) is None
+    (paths.root.parent / "slides").mkdir()
+    (paths.root.parent / "slides" / f"{SLIDE}.tif").write_bytes(b"x")
+    assert store.image_path(SLIDE) == paths.root.parent / "slides" / f"{SLIDE}.tif"

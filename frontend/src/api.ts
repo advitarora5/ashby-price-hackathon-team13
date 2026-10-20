@@ -1,6 +1,6 @@
 import type {
-  CaseDetail, CaseRow, Coverage, Decision, Evidence, NoteVersion, PolicyRec, PolicySummary, Read, RecordedRead,
-  Regions, ReplayStep, Signout, Verdict, ViewEvent,
+  AuditEvent, CaseDetail, CaseRow, EvalDoc, Health, Coverage, Decision, Evidence, NoteVersion, PolicyRec, PolicySummary, Read,
+  RecordedRead, Regions, ReplayStep, Signout, Verdict, ViewEvent,
 } from './types'
 
 export class ApiError extends Error {
@@ -38,7 +38,7 @@ const q = (o: Record<string, string | number | null | undefined>) => {
 export const SESSION_ID = `sess_${Math.random().toString(36).slice(2, 10)}`
 
 export const api = {
-  health: () => req<{ ok: boolean; cases: number; provenance: string; thresholds: Record<string, unknown> }>('/health'),
+  health: () => req<Health>('/health'),
   cases: () => req<CaseRow[]>('/cases'),
   case: (id: string) => req<CaseDetail>(`/cases/${id}`),
   evidence: (caseId: string, p: { read_id?: string; tile?: string; x?: number; y?: number }) =>
@@ -47,8 +47,9 @@ export const api = {
     req<Regions>(`/cases/${caseId}/regions${q({ kind, read_id })}`),
   overlayUrl: (caseId: string, layer: string, read_id?: string, v = 0) =>
     `/api/cases/${caseId}/overlay/${layer}.png${q({ read_id, v })}`,
-  createRead: (case_id: string, blind_all: boolean) =>
-    post<Read>('/reads', { case_id, blind_all, coverage_mode: 'viewport', session_id: SESSION_ID }),
+  /** resume: reopen this reader's latest live read of the case (server default); false starts a separate read. */
+  createRead: (case_id: string, blind_all: boolean, resume = true) =>
+    post<Read>('/reads', { case_id, blind_all, resume, coverage_mode: 'viewport', session_id: SESSION_ID }),
   read: (id: string) => req<Read>(`/reads/${id}`),
   postEvents: (id: string, events: ViewEvent[]) => post<Coverage>(`/reads/${id}/events`, { events }),
   coverage: (id: string) => req<Coverage>(`/reads/${id}/coverage`),
@@ -74,5 +75,9 @@ export const api = {
       { source_read_id, coverage_mode }),
   replayStep: (id: string, n: number) => post<ReplayStep>(`/replay/${id}/step${q({ n })}`),
   replayTally: () => req<Record<string, unknown>>('/replay/tally'),
-  evalSummary: () => req<Record<string, unknown>>('/eval/summary'),
+  evalSummary: () => req<Record<string, EvalDoc>>('/eval/summary'),
+  /** Existing GET /api/audit (ascending by event id); used read-only to derive last activity per case. */
+  auditEvents: (limit = 20000) => req<AuditEvent[]>(`/audit${q({ limit })}`),
+  /** Audit events for one case (existing endpoint, filtered server-side). Used to find a read to resume. */
+  caseAudit: (case_id: string) => req<AuditEvent[]>(`/audit${q({ case_id, limit: 100000 })}`),
 }

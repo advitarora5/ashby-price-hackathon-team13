@@ -209,3 +209,43 @@ export interface ReplayStep {
   signout: Signout | null
   recorded_decision: string | null
 }
+
+export interface Health {
+  ok: boolean
+  cases: number
+  provenance: string
+  bundle?: string
+  manifest_updated?: string | null
+  thresholds: {
+    light?: { lo?: number; hi?: number; source?: string; note?: string }
+    routing_signal?: { signal?: string; source?: string }
+    [k: string]: unknown
+  }
+}
+
+export interface EvalHeadline { label: string; value: string; ci?: string; note?: string; status?: 'pass' | 'fail' | 'info' }
+export interface EvalDoc {
+  title?: string
+  measure?: string
+  dataset?: string
+  scope?: string
+  headline?: EvalHeadline[]
+  caveats?: string[]
+  error?: string
+  [k: string]: unknown
+}
+
+export interface AuditEvent {
+  event_id: number
+  ts: string
+  session_id: string | null
+  read_id: string | null
+  case_id: string | null
+  action: string
+  ai_visible: number | null
+  review_order: string | null
+  decision_before: string | null
+  decision_after: string | null
+  override: number | null
+  detail: Record<string, unknown> | null
+}

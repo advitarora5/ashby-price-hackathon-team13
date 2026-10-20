@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { api } from '../api'
-import type { RecordedRead, ReplayStep } from '../types'
+import { api } from '../../api'
+import type { RecordedRead, ReplayStep } from '../../types'
+import { Pause, Play, Shuffle, Square, TriangleAlert } from 'lucide-react'
+import { Button } from '../ui/Button'
 
 interface Props {
   caseId: string
   onStep: (s: ReplayStep) => void
   onStart: () => void
   onStop: () => void
+  /** Blind read awaiting the initial assessment: other readers' calls must not be shown yet. */
+  locked?: boolean
 }
 
-export default function ReplayPanel({ caseId, onStep, onStart, onStop }: Props) {
+export default function ReplayPanel({ caseId, onStep, onStart, onStop, locked }: Props) {
   const [reads, setReads] = useState<RecordedRead[]>([])
   const [sel, setSel] = useState<string>('')
   const [mode, setMode] = useState<'gaze' | 'viewport'>('gaze')
@@ -55,37 +59,40 @@ export default function ReplayPanel({ caseId, onStep, onStart, onStop }: Props) 
 
   const cur = reads.find((r) => r.read_id === sel)
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <h3>Replay a recorded read</h3>
-        <span className="muted small">PathoGaze eye-tracking, through the live coverage engine</span>
-      </div>
-      {err && <div className="notice warn">{err}</div>}
+    <div className="replay">
+      <p className="xs muted">Replays a recorded PathoGaze eye-tracking read through the live coverage engine. AI overlays are hidden during replay.</p>
+      {locked ? (
+        <p className="small muted">
+          {reads.length > 0 ? `${reads.length} recorded read${reads.length === 1 ? '' : 's'} available. ` : ''}
+          Available after you record your initial assessment, because recorded reads show other readers' calls.
+        </p>
+      ) : <>
+      {err && <div className="notice warn"><TriangleAlert size={14} aria-hidden />{err}</div>}
       {reads.length === 0 && !err && <p className="small muted">No recorded reads for this slide.</p>}
       {reads.length > 0 && (
         <>
           <div className="replay-controls">
-            <select value={sel} onChange={(e) => setSel(e.target.value)} disabled={playing}>
+            <select className="select" aria-label="Recorded read" value={sel} onChange={(e) => setSel(e.target.value)} disabled={playing}>
               {reads.map((r) => (
                 <option key={r.read_id} value={r.read_id}>
                   {r.reader_id.replace('pathogaze_', '')} · {r.experience_level ? (/^[<\d]/.test(r.experience_level) ? `${r.experience_level} yrs` : r.experience_level) : '?'} · called {r.decision} · {Math.round(r.seconds)}s
                 </option>
               ))}
             </select>
-            <select value={mode} onChange={(e) => setMode(e.target.value as 'gaze' | 'viewport')} disabled={playing}>
+            <select className="select" aria-label="Coverage mode" value={mode} onChange={(e) => setMode(e.target.value as 'gaze' | 'viewport')} disabled={playing}>
               <option value="gaze">gaze (fixations)</option>
               <option value="viewport">viewport only</option>
             </select>
           </div>
           <div className="btn-row">
-            <button className="btn small" onClick={randomMiss} disabled={playing}>Pick a random benign call</button>
-            {!playing && <button className="btn primary small" onClick={start} disabled={!sel}>▶ Replay</button>}
-            {playing && <button className="btn small" onClick={() => setPlaying(false)}>❚❚ Pause</button>}
-            {!playing && replayId && step && !step.done && <button className="btn small" onClick={() => setPlaying(true)}>Resume</button>}
-            {replayId && <button className="btn small" onClick={() => { setPlaying(false); setReplayId(null); setStep(null); onStop() }}>Exit replay</button>}
-            <label className="small">speed
-              <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
-                <option value={5}>slow</option><option value={25}>normal</option><option value={100}>fast</option>
+            <Button size="sm" icon={Shuffle} onClick={randomMiss} disabled={playing}>Random benign call</Button>
+            {!playing && <Button size="sm" variant="primary" icon={Play} onClick={start} disabled={!sel}>Replay</Button>}
+            {playing && <Button size="sm" icon={Pause} onClick={() => setPlaying(false)}>Pause</Button>}
+            {!playing && replayId && step && !step.done && <Button size="sm" icon={Play} onClick={() => setPlaying(true)}>Resume</Button>}
+            {replayId && <Button size="sm" icon={Square} onClick={() => { setPlaying(false); setReplayId(null); setStep(null); onStop() }}>Exit replay</Button>}
+            <label className="field-inline small">Speed
+              <select className="select" value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
+                <option value={5}>Slow</option><option value={25}>Normal</option><option value={100}>Fast</option>
               </select>
             </label>
           </div>
@@ -93,11 +100,12 @@ export default function ReplayPanel({ caseId, onStep, onStart, onStop }: Props) 
           {step && (
             <div className="replay-progress">
               <div className="cov-track"><div className="cov-fill replay" style={{ width: `${(step.cursor / step.n_events) * 100}%` }} /></div>
-              <span className="small">{step.cursor}/{step.n_events} events · {((step.t_ms ?? 0) / 1000).toFixed(0)} s · {Math.round(step.coverage.seen_share * 100)}% tissue seen</span>
+              <span className="small num">{step.cursor}/{step.n_events} events · {((step.t_ms ?? 0) / 1000).toFixed(0)} s · {Math.round(step.coverage.seen_share * 100)}% tissue seen</span>
             </div>
           )}
         </>
       )}
-    </section>
+      </>}
+    </div>
   )
 }
