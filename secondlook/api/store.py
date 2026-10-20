@@ -7,6 +7,7 @@ as `unavailable` with a reason.
 from __future__ import annotations
 
 import json
+import os
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -15,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from secondlook.config import PRIMARY_MODEL, BundlePaths, bundle_paths
+from secondlook.config import DATA_ROOT, PRIMARY_MODEL, RAW_DIR, BundlePaths, bundle_paths
 from secondlook.geometry import TileGrid
 from secondlook.ids import sequence_digest
 from secondlook.store import db
@@ -162,18 +163,32 @@ class Store:
             return {"available": False, "reason": e.reason, "tumor": [], "benign": []}
 
     # ------------------------------------------------------------------ deep zoom
-    def deepzoom(self, slide_id: str):
-        if slide_id in self._dz:
-            return self._dz[slide_id]
+    def image_path(self, slide_id: str) -> Path | None:
+        """The whole-slide file on this machine. The stored path is where the slide was scored
+        (often another machine), so when it is missing look for the same file name next to the
+        bundle (`<data>/slides`), under SECONDLOOK_SLIDES, or in the raw CAMELYON16 folder."""
         con = self.con()
         row = db.one(con, "SELECT image_path FROM slides WHERE slide_id=?", slide_id)
         con.close()
-        if not row or not row["image_path"] or not Path(row["image_path"]).exists():
+        if not row or not row["image_path"]:
+            return None
+        stored = Path(row["image_path"])
+        if stored.is_absolute() and stored.exists():
+            return stored
+        dirs = [Path(d).expanduser() for d in os.environ.get("SECONDLOOK_SLIDES", "").split(os.pathsep) if d]
+        dirs += [self.paths.root.parent / "slides", DATA_ROOT / "slides", RAW_DIR / "camelyon16" / "images"]
+        return next((d / stored.name for d in dirs if (d / stored.name).exists()), None)
+
+    def deepzoom(self, slide_id: str):
+        if slide_id in self._dz:
+            return self._dz[slide_id]
+        path = self.image_path(slide_id)
+        if path is None:
             raise Unavailable("slide image", "whole-slide file is not on this machine (thumbnail only)")
         import openslide
         from openslide.deepzoom import DeepZoomGenerator
 
-        dz = DeepZoomGenerator(openslide.OpenSlide(row["image_path"]), tile_size=254, overlap=1, limit_bounds=False)
+        dz = DeepZoomGenerator(openslide.OpenSlide(str(path)), tile_size=254, overlap=1, limit_bounds=False)
         self._dz[slide_id] = (dz, threading.Lock())
         return self._dz[slide_id]
 

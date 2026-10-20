@@ -152,7 +152,8 @@ def referee_inputs(store: Store, sd, region: dict) -> tuple[dict, list]:
         pass
     state = clef.region_state(sd.tiles, sd.scores, rect, region, float(sd.row["mpp"]), labels, ex, context)
     images, legend = [], []
-    crop = clef.region_crop(sd.row.get("image_path"), store.paths.thumbnail(sd.slide_id), int(sd.row["width"]), rect)
+    path = store.image_path(sd.slide_id)
+    crop = clef.region_crop(str(path) if path else None, store.paths.thumbnail(sd.slide_id), int(sd.row["width"]), rect)
     if crop:
         images.append(clef.image_part(crop))
         legend.append("image 1: the flagged region with its surroundings")

@@ -1,4 +1,5 @@
 """End-to-end API flow on the synthetic test bundle (see conftest)."""
+from secondlook.store import db
 from tests.conftest import CASE, SLIDE, SLOW_SLIDE
 
 
@@ -271,3 +272,20 @@ def test_concurrent_signouts_get_distinct_attempts(client):
     import json as _json
 
     assert n == 6 and sorted(_json.loads(a)["attempt"] for a in attempts) == [1, 2, 3, 4, 5, 6]
+
+
+def test_slide_file_is_found_next_to_the_bundle_when_scored_elsewhere(bundle, monkeypatch):
+    """The DB keeps the path from the scoring machine; a teammate's copy keeps slides in <data>/slides."""
+    from secondlook.api.store import Store
+
+    paths, _, _ = bundle
+    monkeypatch.delenv("SECONDLOOK_SLIDES", raising=False)
+    con = db.connect(paths.db)
+    con.execute("UPDATE slides SET image_path=? WHERE slide_id=?", (f"/home/ubuntu/data/raw/camelyon16/images/{SLIDE}.tif", SLIDE))
+    con.commit()
+    con.close()
+    store = Store(paths)
+    assert store.image_path(SLIDE) is None
+    (paths.root.parent / "slides").mkdir()
+    (paths.root.parent / "slides" / f"{SLIDE}.tif").write_bytes(b"x")
+    assert store.image_path(SLIDE) == paths.root.parent / "slides" / f"{SLIDE}.tif"
