@@ -113,16 +113,21 @@ DEFAULT_MPP_IF_MISSING = None  # refuse to guess; slides without mpp are rejecte
 class ArtifactRules:
     blank_frac: float = 0.80        # share of near-white low-saturation pixels => mostly glass
     blur_laplacian_var: float = 60.0  # variance of Laplacian below this (on tissue) => out of focus
-    ink_frac: float = 0.08          # share of pixels with ink-like hue/darkness
+    ink_frac: float = 0.05          # share of pixels with ink-like hue/darkness
     fold_frac: float = 0.35         # share of dark, highly saturated pixels (heuristic, weak)
-    version: str = "artifact_rules_v1"
+    version: str = "artifact_rules_v2"
 
 
 ARTIFACT_RULES = ArtifactRules()
 
 # ---- Models ------------------------------------------------------------------
-PRIMARY_MODEL = "quiltnet"
-PATHOLOGY_MODELS = ("quiltnet", "plip", "pathgen")
+# The two models compared for disagreement; must match the bundle being served. CONCH and MUSK
+# are the defaults: on the GPU run CONCH was the best tissue probe (NCT 95.9%) and tumour probe
+# (CAMELYON16 out-of-fold AUROC 0.996), MUSK second. Both are gated on Hugging Face; set
+# SECONDLOOK_PRIMARY_MODEL=quiltnet SECONDLOOK_SECONDARY_MODEL=plip for a bundle built without them.
+PRIMARY_MODEL = os.environ.get("SECONDLOOK_PRIMARY_MODEL", "conch")
+SECONDARY_MODEL = os.environ.get("SECONDLOOK_SECONDARY_MODEL", "musk")
+PATHOLOGY_MODELS = ("quiltnet", "plip", "pathgen", "conch", "musk")  # vision-language: also embed text
 CONTROL_MODELS = ("imagenet", "colorhist")
 
 # ---- Tumor regions -------------------------------------------------------------

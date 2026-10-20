@@ -1,0 +1,37 @@
+/* Spatial context (Layout tab) and Clef (notes check, region referee) panels */
+.ctx, .clef { padding: var(--sp-3); margin-bottom: var(--sp-3); }
+.ctx .panel-head, .clef .panel-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--sp-2); }
+.ctx h3, .clef h3 { margin: 0; font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+.tone-context { border-color: var(--c-teal); border-width: 1px; background: rgba(36, 124, 121, 0.12); } .tone-context span { background: var(--c-teal); }
+
+.ctx-rings { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--sp-2); }
+.ctx-rings .seg-btn { height: 24px; padding: 0 8px; font-size: var(--fs-xs); border: 1px solid var(--c-border-strong); border-radius: var(--r-sm); background: var(--c-surface); color: var(--c-text); cursor: pointer; }
+.ctx-rings .seg-btn.on { background: var(--c-primary-tint); border-color: var(--c-primary); color: var(--c-primary-strong); font-weight: var(--fw-semibold); }
+.ctx-grid { display: grid; gap: 2px; align-items: end; overflow-x: auto; padding-bottom: 2px; }
+.ctx-corner { align-self: end; padding-bottom: 2px; }
+.ctx-col { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 10px; color: var(--c-text-2); height: 104px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; justify-self: center; }
+.ctx-row { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; align-self: center; }
+.ctx-cell { width: 18px; height: 18px; border: 1px solid var(--c-border); border-radius: 3px; padding: 0; cursor: pointer; }
+.ctx-cell:disabled { background: repeating-linear-gradient(45deg, transparent 0 3px, var(--c-border) 3px 4px) !important; cursor: default; }
+.ctx-cell.on { outline: 2px solid var(--c-teal); outline-offset: 1px; }
+.ctx-legend { margin: 6px 0; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.ctx-legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.ctx-up { background: rgba(181, 77, 77, 0.75); } .ctx-down { background: rgba(65, 107, 141, 0.75); }
+.ctx-top, .ctx-matches { margin: 4px 0; padding-left: 16px; }
+.ctx-top li, .ctx-matches li { margin: 3px 0; }
+.ctx-search { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); flex-wrap: wrap; }
+
+.clef-run { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: 6px; }
+.clef-group { border-left: 3px solid var(--c-border); padding: 2px 0 2px var(--sp-2); margin: var(--sp-2) 0; }
+.clef-group ul, .clef-regions { margin: 2px 0; padding-left: 0; list-style: none; }
+.clef-group li, .clef-regions li { margin: 4px 0; }
+.clef-title { font-weight: var(--fw-semibold); margin-bottom: 2px; }
+.clef-icon { display: inline-block; width: 16px; }
+.clef-group.tone-bad { border-color: var(--c-red); } .clef-group.tone-bad .clef-title { color: var(--c-red-ink); }
+.clef-group.tone-warn { border-color: var(--c-amber); } .clef-group.tone-warn .clef-title { color: var(--c-amber-ink); }
+.clef-group.tone-ok { border-color: var(--c-green); } .clef-group.tone-ok .clef-title { color: var(--c-green-ink); }
+.clef-group.tone-muted .clef-title { color: var(--c-text-2); }
+.clef-links { display: inline-flex; gap: var(--sp-2); margin-left: var(--sp-2); }
+.clef-method { margin-top: 6px; }
+.clef-sub { padding-top: var(--sp-3); }
+.clef-regions .btn { margin-left: var(--sp-2); }

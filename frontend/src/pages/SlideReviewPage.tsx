@@ -11,6 +11,8 @@ import DecisionTab from '../components/review/DecisionTab'
 import DecisionBar from '../components/review/DecisionBar'
 import NotesSection, { NOTES_ID } from '../components/review/NotesSection'
 import ReplayPanel from '../components/review/ReplayPanel'
+import ContextPanel from '../components/ContextPanel'
+import ClefPanel from '../components/ClefPanel'
 import ReviewToolbar, { type LayerKey, type Layers } from '../components/review/ReviewToolbar'
 import ShortcutHelp from '../components/review/ShortcutHelp'
 import SlideViewer, { type LayerSpec, type ViewerControls, type ViewerStatus, type ViewportReport } from '../components/review/SlideViewer'
@@ -32,7 +34,7 @@ import type {
 } from '../types'
 
 const DEFAULT_LAYERS: Layers = { risk: true, disagreement: false, artifact: false, coverage: false, regions: true }
-type TabId = 'evidence' | 'unseen' | 'model' | 'decision'
+type TabId = 'evidence' | 'layout' | 'unseen' | 'model' | 'decision'
 const cap = (s: string | null | undefined) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
 
 /** Everything needed to return to a case in this session without starting a new read. */
@@ -114,6 +116,9 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
   const [inspectDim, setInspectDim] = useState(false)
   const [tab, setTab] = useState<TabId>('evidence')
   const [focus, setFocus] = useState<{ rect: Rect; key: number } | null>(null)
+  // tiles outlined by the Layout and Notes-check panels; a pending jump from "find similar arrangements"
+  const [ctxBoxes, setCtxBoxes] = useState<{ rects: Rect[]; label: string } | null>(null)
+  const pendingAt = useRef<{ caseId: string; tile: string; rect: Rect } | null>(null)
   const [activeTarget, setActiveTarget] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [readNote, setReadNote] = useState<string | null>(null)
@@ -251,7 +256,7 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     await flush()
     saveDraftOnLeave()
     if (snap.current) sessions.current.set(snap.current.detail.case_id, snap.current)
-    setActiveTarget(null); setFocus(null); setError(null); setZoomMag(null); setAllHidden(false); setInspectDim(false)
+    setActiveTarget(null); setFocus(null); setError(null); setZoomMag(null); setAllHidden(false); setInspectDim(false); setCtxBoxes(null)
     setReplay({ active: false, follow: null, fix: null }); setReplaySignout(null); setToast(null)
     queue.current = []
     const saved = sessions.current.get(id)
@@ -328,6 +333,14 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     requested.current = caseId
     openCase(caseId)
   }, [caseId, openCase])
+
+  // open a matched case at the matching tile once its read is in place
+  useEffect(() => {
+    const at = pendingAt.current
+    if (!at || !read || detail?.case_id !== at.caseId) return
+    pendingAt.current = null
+    loadEvidence(at.caseId, read, { tile: at.tile }).then(() => setFocus({ rect: at.rect, key: Date.now() }))
+  }, [read, detail, loadEvidence])
 
   const onViewport = useCallback((v: ViewportReport) => {
     if (detail) setZoomMag((10 * v.zoom) / detail.mpp)
@@ -477,7 +490,7 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
   }, [detail, layers, evidenceVisible, read, coverageUrl, replay.active, heatOpacity, allHidden, inspectDim])
 
   const boxes = useMemo(() => {
-    const out: { region: Region; tone: 'evidence' | 'disputed' | 'unseen' | 'selected'; label: string }[] = []
+    const out: { region: Region; tone: 'evidence' | 'disputed' | 'unseen' | 'selected' | 'context'; label: string }[] = []
     if (allHidden) return out
     const quiet = alerts.length > 0
     if (evidenceVisible && layers.regions && !replay.active) {
@@ -485,10 +498,12 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
       if (layers.disagreement) disputed.slice(0, 3).forEach((r) => out.push({ region: r, tone: 'disputed', label: `#${r.rank} models disagree` }))
     }
     alerts.forEach((r) => out.push({ region: r, tone: 'unseen', label: r.alert_status === 'revisited' ? `Region ${r.rank} · revisited` : `Not yet viewed · ${r.rank}` }))
+    if (ctxBoxes && evidenceVisible && !replay.active)
+      ctxBoxes.rects.forEach((r, i) => out.push({ region: { ...r, region_id: `ctx${i}`, kind: 'context', rank: i, risk: null, disagreement: null, n_tiles: 1, peak_tile_id: null, source: null }, tone: 'context', label: i ? '' : ctxBoxes.label }))
     if (ev?.tile_rect && evidenceVisible && !replay.active)
       out.push({ region: { ...ev.tile_rect, region_id: 'tile', kind: 'tile', rank: 0, risk: null, disagreement: null, n_tiles: 1, peak_tile_id: null, source: null }, tone: 'selected', label: '' })
     return out
-  }, [evRegions, disputed, alerts, ev, evidenceVisible, layers, replay.active, allHidden])
+  }, [evRegions, disputed, alerts, ev, evidenceVisible, layers, replay.active, allHidden, ctxBoxes])
 
   /** Highlighted regions to step through with J/K: unseen alerts first, then AI regions. */
   const targets = useMemo<Target[]>(() => {
@@ -594,6 +609,7 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
 
   const tabs = [
     { id: 'evidence', label: 'Evidence', icon: evidenceVisible ? undefined : <Lock size={12} aria-label="locked" /> },
+    { id: 'layout', label: 'Layout', icon: evidenceVisible ? undefined : <Lock size={12} aria-label="locked" /> },
     { id: 'unseen', label: 'Unseen', count: alertCheck ? unrevisited.length : undefined },
     { id: 'model', label: 'Models' },
     { id: 'decision', label: 'Decision' },
@@ -731,6 +747,22 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
                     reviews={read && read.source === 'live' && read.evidence_visible && !readOnly ? read.feature_reviews : null}
                     reviewKey={read?.read_id ?? ''} onReview={reviewFeature} onOpenNotes={openNotes} />
                 )}
+                {tab === 'layout' && !evidenceVisible && (
+                  <p className="small muted side-empty">The tissue layout is AI evidence: it unlocks once your blind call is recorded.</p>
+                )}
+                {tab === 'layout' && (
+                  <ContextPanel caseId={detail.case_id} readId={read?.read_id} tileId={ev?.tile_id ?? null} hidden={!evidenceVisible || replay.active}
+                    onShowTiles={(rects, label) => {
+                      setCtxBoxes({ rects, label })
+                      if (!rects.length) return
+                      const x = Math.min(...rects.map((r) => r.x)), y = Math.min(...rects.map((r) => r.y))
+                      setFocus({ rect: { x, y, w: Math.max(...rects.map((r) => r.x + r.w)) - x, h: Math.max(...rects.map((r) => r.y + r.h)) - y }, key: Date.now() })
+                    }}
+                    onOpenMatch={(c, tile, r) => {
+                      pendingAt.current = { caseId: c, tile, rect: { x: r.x - 6 * r.w, y: r.y - 6 * r.h, w: 13 * r.w, h: 13 * r.h } }
+                      onSelectCase(c)
+                    }} />
+                )}
                 {tab === 'unseen' && (
                   <UnseenTab coverage={coverage} latest={latestCheck} alertCheck={alertCheck} onJump={jump} activeAlert={activeTarget} zoomMag={zoomMag}
                     canRunCheck={!!read?.initial_decision && !busy && !replay.active && !readOnly} checkTodo={checkTodo} onRunCheck={runCheck} replayActive={replay.active}
@@ -750,6 +782,10 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
                       <NotesSection read={read} draft={notesDraft} onDraft={setNotesDraft} onSave={saveNotes} busy={busy}
                         readOnly={readOnly} evidenceHidden={!read.evidence_visible} />
                     ) : null} />
+                )}
+                {tab === 'decision' && !replay.active && (
+                  <ClefPanel caseId={detail.case_id} read={read} regions={[...disputed, ...evRegions]} onJump={jump}
+                    onShowTiles={(rects, label) => setCtxBoxes({ rects, label })} />
                 )}
               </div>
             </>

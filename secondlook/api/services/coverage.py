@@ -337,9 +337,11 @@ def run_signout(store: Store, con, read: dict, decision: str, max_regions: int =
     c, n = coverage_for(store, con, read, sd)
     store.paths.coverage_dir.mkdir(parents=True, exist_ok=True)
     np.save(store.paths.coverage(read["read_id"]), c.as_array())
-    attempt = int(read.get("signout_attempts") or 0) + 1
-    con.execute("UPDATE reads SET signout_attempts=?, final_decision=COALESCE(final_decision, initial_decision, ?), "
-                "signed_out_at=? WHERE read_id=?", (attempt, decision, db.now(), read["read_id"]))
+    # increment in SQL and read it back in the same transaction, so concurrent sign-outs get distinct attempts
+    con.execute("UPDATE reads SET signout_attempts=COALESCE(signout_attempts, 0)+1, "
+                "final_decision=COALESCE(final_decision, initial_decision, ?), signed_out_at=? WHERE read_id=?",
+                (decision, db.now(), read["read_id"]))
+    attempt = int(db.one(con, "SELECT signout_attempts n FROM reads WHERE read_id=?", read["read_id"])["n"])
     if not read["initial_decision"]:
         con.execute("UPDATE reads SET initial_decision=? WHERE read_id=?", (decision, read["read_id"]))
     if read["source"] == "live":  # replays never change a real case's review status
@@ -393,6 +395,10 @@ def signout(read_id: str, body: SignoutIn, store: Store = Depends(get_store)):
             missing = signout_missing(store, con, read, case_row(con, read["case_id"]))
             if missing:
                 raise HTTPException(409, f"before sign-out, record: {', '.join(missing)}")
+            recorded = read["final_decision"] or read["initial_decision"]
+            if body.decision != recorded:
+                raise HTTPException(409, f"sign-out as '{body.decision}' does not match the recorded assessment "
+                                         f"'{recorded}'; record the change first")
         return run_signout(store, con, read, body.decision, body.max_regions, body.session_id)
     finally:
         con.close()

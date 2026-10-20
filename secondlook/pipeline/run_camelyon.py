@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 
 from secondlook import config
-from secondlook.config import PRIMARY_MODEL, RAW_DIR, WORK_DIR, bundle_paths
+from secondlook.config import PATHOLOGY_MODELS, PRIMARY_MODEL, RAW_DIR, WORK_DIR, bundle_paths
 from secondlook.geometry import TileGrid
 from secondlook.ids import sequence_digest, stable_fold, tile_id
 from secondlook.store import db
@@ -29,7 +29,7 @@ from secondlook.store.arrays import read_matrix, read_parquet, write_matrix, wri
 
 C16_RAW = RAW_DIR / "camelyon16"
 WORK = WORK_DIR / "camelyon16"
-TEXT_MODELS = ("quiltnet", "plip", "pathgen")
+TEXT_MODELS = PATHOLOGY_MODELS
 PREPROC_VERSION = f"tiles_{config.TILE_PX}px_{config.TARGET_MPP}mpp_tissue{config.MIN_TISSUE_FRACTION}_v1"
 
 
