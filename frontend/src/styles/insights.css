@@ -35,3 +35,29 @@
 .clef-method { margin-top: 6px; }
 .clef-sub { padding-top: var(--sp-3); }
 .clef-regions .btn { margin-left: var(--sp-2); }
+
+/* Tissue search ("Ctrl+F for tissue"): toolbar box, Search tab, current spot on the slide */
+.tb-search { position: relative; display: flex; align-items: center; margin-left: var(--sp-1); }
+.tb-search input { height: var(--control-h-sm); width: 190px; padding: 0 38px 0 10px; border: 1px solid var(--c-border-strong); border-radius: var(--r-md); font: inherit; font-size: var(--fs-sm); color: var(--c-text); background: var(--c-surface); }
+.tb-search input:focus { outline: none; border-color: var(--c-primary); box-shadow: var(--focus-ring); }
+.tb-search input:disabled { background: var(--c-surface-2); color: var(--c-text-2); cursor: not-allowed; }
+.tb-search-k { position: absolute; right: 6px; font: inherit; font-size: 10.5px; color: var(--c-text-2); border: 1px solid var(--c-border); border-radius: var(--r-sm); padding: 0 4px; pointer-events: none; }
+.tone-search { border-color: #e1690a; border-width: 2px; } .tone-search span { background: #e1690a; }
+.srch { padding: var(--sp-3); margin-bottom: var(--sp-3); }
+.srch .panel-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--sp-2); }
+.srch h3 { margin: 0; font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+.srch-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.srch-chip { border: 1px solid var(--c-border-strong); background: var(--c-surface); border-radius: var(--r-pill); padding: 2px 10px; font: inherit; font-size: var(--fs-xs); color: var(--c-text); cursor: pointer; }
+.srch-chip:hover { border-color: var(--c-primary); color: var(--c-primary-strong); background: var(--c-primary-tint); }
+.srch-q { display: flex; justify-content: space-between; align-items: baseline; font-size: var(--fs-md); margin-bottom: 2px; }
+.srch-step { display: flex; justify-content: space-between; align-items: center; margin: var(--sp-2) 0 4px; }
+.srch-step-btns { display: inline-flex; gap: 4px; }
+.srch-spots { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 2px; }
+.srch-spots li { padding: 2px 6px; border-radius: var(--r-sm); }
+.srch-grid { grid-template-columns: repeat(5, 1fr); }
+.srch-spots li.on { background: var(--c-primary-tint); }
+.srch-bar { height: 6px; background: var(--c-surface-sunken); border-radius: 3px; overflow: hidden; }
+.srch-bar span { display: block; height: 100%; background: #e1690a; }
+.srch-cases { margin-top: var(--sp-3); }
+.srch-cases ul { margin: 4px 0; padding-left: 16px; }
+.srch-method { margin-top: var(--sp-3); }
