@@ -1,4 +1,6 @@
-# SecondLook
+# Claripath
+
+*Clinical Review Intelligence* (formerly SecondLook; the Python package and settings keep the `secondlook` name).
 
 Experimental pathology decision support (TriageLens + UNSEEN + WORTH A READER) that never outputs a diagnosis.
 It shows evidence, flags tissue the reader never looked at, routes disputed cases to a blind-first

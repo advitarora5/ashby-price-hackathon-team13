@@ -1,4 +1,4 @@
-"""SecondLook API: one FastAPI app, five service modules, all reading the local bundle.
+"""Claripath API: one FastAPI app, five service modules, all reading the local bundle.
 
     uvicorn secondlook.api.main:app --port 8000
 """
@@ -17,7 +17,7 @@ from secondlook.api.services import audit, coverage, disagreement, evidence, pol
 from secondlook.api.store import Store, get_store
 from secondlook.config import REPO_ROOT
 
-app = FastAPI(title="SecondLook", version="0.1.0",
+app = FastAPI(title="Claripath", version="0.1.0",
               description="Experimental pathology decision support. Never outputs a diagnosis.")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
                    allow_methods=["*"], allow_headers=["*"])

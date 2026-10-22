@@ -1,7 +1,7 @@
 """Clef (Cloudflare's multimodal decision model) as the bridge between words and the slide.
 
 Clef answers typed questions about a state (text, data, up to 4 images) with a
-probability per option. SecondLook uses it where language is involved and leaves
+probability per option. Claripath uses it where language is involved and leaves
 looking at tissue to the pathology encoders:
 
   findings      a reader's notes or a pathology report -> present / absent / not
