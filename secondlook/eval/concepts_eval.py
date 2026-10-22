@@ -51,10 +51,12 @@ def _erase(X, dirs):
     return X - (X @ Q) @ Q.T
 
 
-def run() -> dict:
+def run(vocab: str | None = None) -> dict:
+    """Evaluate the saved explainer, or (with vocab) a fresh fit on that vocabulary, written to
+    concepts_<vocab>.json so vocabularies can be compared before one is kept."""
     paths = bundle_paths()
-    out = paths.eval_dir / "concepts.json"
-    e = cx.load(paths)
+    out = paths.eval_dir / ("concepts.json" if vocab is None else f"concepts_{vocab}.json")
+    e = cx.load(paths) if vocab is None else cx.fit_default(paths, vocab=vocab)
     if e is None:
         return write_eval(out, {"available": False, "reason": "run python -m secondlook.pipeline.concepts first"})
     X, y, g = labelled_tiles(paths)
@@ -79,7 +81,9 @@ def run() -> dict:
                          "auroc_after_random_mean": float(np.mean(rand_auc)),
                          "drop_vs_random_ci": boot(lambda i: auroc(y[i], r0[i]) - auroc(y[i], top[i]))})
 
-    with_label = cx.fit_default(paths, drop=())
+    vocab = e.meta.get("vocab", "bank")
+    circ = set(cx.circular_ids(paths, vocab))
+    with_label = cx.fit_default(paths, drop=tuple(i for i in e.meta.get("dropped", []) if i not in circ), vocab=vocab)
     wl = with_label.words_logit(X)
     sanity = {"with": "Metastatic carcinoma", "words_only_auroc": auroc(y, wl),
               "words_only_ci": boot(lambda i: auroc(y[i], wl[i])),
@@ -97,7 +101,7 @@ def run() -> dict:
             {"label": f"Erasing all {d0['k']} words from the tiles lowers the detector's AUROC to", "value": f"{d0['auroc_after']:.3f}",
              "ci": f"drop vs random {d0['drop_vs_random_ci'][0]:+.3f} to {d0['drop_vs_random_ci'][1]:+.3f}",
              "note": f"erasing {d0['k']} random directions: {d0['auroc_after_random_mean']:.3f}"},
-            {"label": "With the circular word 'metastatic carcinoma' added back", "value": f"{sanity['words_only_auroc']:.3f}",
+            {"label": "With the circular words (naming the answer) added back", "value": f"{sanity['words_only_auroc']:.3f}",
              "note": "the shown explanation leaves it out; carried by " + ", ".join(sanity["weights"])}]
     doc = {"title": "Concept explanations (CoCoX-style) are faithful to the tumour probe", "measure": "interpretability",
            "dataset": f"CAMELYON16 test tiles ({len(y)} tiles, {int(y.sum())} tumour, {len(np.unique(g))} slides)",
@@ -111,7 +115,9 @@ def run() -> dict:
 
 
 if __name__ == "__main__":
-    d = run()
+    import sys
+
+    d = run(sys.argv[1] if len(sys.argv) > 1 else None)
     for h in d.get("headline", []):
         print(h)
     print("top reason on tumour tiles:", d.get("top_reason_on_tumour_tiles"))

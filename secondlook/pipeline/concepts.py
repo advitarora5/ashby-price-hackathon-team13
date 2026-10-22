@@ -30,6 +30,11 @@ BENIGN_PROB = 0.1        # baseline: tiles the probe calls clearly benign
 # "metastatic carcinoma" is left out of the shown explanation: "tumour because it looks like tumour"
 # is circular. Without it, morphology concepts alone carry the score (eval/concepts_eval.py).
 DEFAULT_DROP = ("metastasis",)
+# Lymph-node vocabulary groups left out of the explanation: "circular" names the answer; "artifact"
+# and "other" (fluid, vessels, fat, ink, ...) let the surrogate explain tumour by what is absent
+# ("little pink fluid"), which read poorly. Cells and node structures alone keep AUROC 0.991 on the
+# held-out slides (eval/concepts_eval.py).
+HIDDEN_GROUPS = ("circular", "artifact", "other")
 FIT_TILES = 80_000       # tiles sampled across slides to fit the surrogate
 VERSION = "concepts_v1"
 
@@ -49,10 +54,41 @@ def probe_line(paths: BundlePaths, model: str = PRIMARY_MODEL) -> tuple[np.ndarr
     return (v / p.meta.temperature).astype(np.float32), b
 
 
-def concept_directions(paths: BundlePaths, model: str = PRIMARY_MODEL, drop: tuple[str, ...] = ()):
-    """(ids, labels, [k, D] unit directions) from the exported text bank: positive minus negative."""
+def vocab_path(paths: BundlePaths, model: str = PRIMARY_MODEL) -> Path:
+    return paths.models_dir / f"concept_vocab_{model}.npz"
+
+
+def default_vocab(paths: BundlePaths, model: str = PRIMARY_MODEL) -> str:
+    """The lymph-node vocabulary (scripts/build_concept_vocab.py) when built, else the 11 feature prompts."""
+    return "lymph_node" if vocab_path(paths, model).exists() else "bank"
+
+
+def default_drop(paths: BundlePaths, vocab: str, model: str = PRIMARY_MODEL) -> tuple[str, ...]:
+    """Concepts that name the answer: encoded for the sanity check, left out of the shown explanation."""
+    if vocab == "bank":
+        return DEFAULT_DROP
+    d = np.load(vocab_path(paths, model))
+    return tuple(str(i) for i, g in zip(d["ids"], d["groups"]) if str(g) in HIDDEN_GROUPS)
+
+
+def circular_ids(paths: BundlePaths, vocab: str, model: str = PRIMARY_MODEL) -> tuple[str, ...]:
+    """Concepts that name the answer (for the sanity check that adds them back)."""
+    if vocab == "bank":
+        return DEFAULT_DROP
+    d = np.load(vocab_path(paths, model))
+    return tuple(str(i) for i, g in zip(d["ids"], d["groups"]) if str(g) == "circular")
+
+
+def concept_directions(paths: BundlePaths, model: str = PRIMARY_MODEL, drop: tuple[str, ...] = (), vocab: str = "bank"):
+    """(ids, labels, [k, D] unit directions): the lymph-node vocabulary (text(phrase) - text(neutral)),
+    or the feature text bank (positive minus negative prototype)."""
     from secondlook.pipeline.features import load_features
     from secondlook.pipeline.run_camelyon import load_text_bank
+
+    if vocab == "lymph_node":
+        d = np.load(vocab_path(paths, model))
+        keep = [k for k, i in enumerate(d["ids"]) if str(i) not in drop]
+        return [str(d["ids"][k]) for k in keep], [str(d["labels"][k]) for k in keep], d["directions"][keep].astype(np.float32)
 
     tb = load_text_bank(paths, model)
     if tb is None:
@@ -103,12 +139,12 @@ class Explainer:
 
 
 def fit(X: np.ndarray, paths: BundlePaths, model: str = PRIMARY_MODEL, drop: tuple[str, ...] = DEFAULT_DROP,
-        seed: int = 0, source: str = "bundle") -> Explainer:
+        seed: int = 0, source: str = "bundle", vocab: str = "bank") -> Explainer:
     """Fit the sign-constrained surrogate to the probe's logits on tissue tiles X (labels not used)."""
     from scipy.optimize import nnls
 
     v, b = probe_line(paths, model)
-    ids, labels, C = concept_directions(paths, model, drop)
+    ids, labels, C = concept_directions(paths, model, drop, vocab)
     X = np.asarray(X, np.float32)
     rng = np.random.default_rng(seed)
     if len(X) > FIT_TILES:
@@ -127,7 +163,7 @@ def fit(X: np.ndarray, paths: BundlePaths, model: str = PRIMARY_MODEL, drop: tup
     benign = 1 / (1 + np.exp(-logit)) < BENIGN_PROB
     baseline = Z[benign].mean(0) if benign.any() else np.zeros(len(ids), np.float32)
     meta = {"version": VERSION, "model": model, "n_fit": int(len(X)), "r2_vs_probe_logit": round(r2, 4),
-            "dropped": list(drop), "benign_prob": BENIGN_PROB, "fit_on": source,
+            "dropped": list(drop), "vocab": vocab, "n_concepts": len(ids), "benign_prob": BENIGN_PROB, "fit_on": source,
             "method": "sign-constrained least squares of the probe logit on CONCH concept similarities (CoCoX-style)"}
     return Explainer(model, ids, labels, C, mu.astype(np.float32), sd.astype(np.float32), weight, offset,
                      baseline.astype(np.float32), v, b, meta)
@@ -147,7 +183,7 @@ def load(paths: BundlePaths, model: str = PRIMARY_MODEL) -> Explainer | None:
     if not p.exists():
         return None
     d = json.loads(p.read_text())
-    ids, labels, C = concept_directions(paths, model, tuple(d["meta"].get("dropped", ())))
+    ids, labels, C = concept_directions(paths, model, tuple(d["meta"].get("dropped", ())), d["meta"].get("vocab", "bank"))
     if ids != d["ids"]:
         return None  # text bank changed since the explainer was fitted
     v, b = probe_line(paths, model)
@@ -198,18 +234,22 @@ def tissue_embeddings(paths: BundlePaths, model: str = PRIMARY_MODEL, per_slide:
     return np.concatenate(out)
 
 
-def fit_default(paths: BundlePaths, drop: tuple[str, ...] = DEFAULT_DROP) -> Explainer:
+def fit_default(paths: BundlePaths, drop: tuple[str, ...] | None = None, vocab: str | None = None) -> Explainer:
     """Fit on the probe's training slides when they are on this machine (so the test slides stay
     held out), else on the bundle's slides."""
+    vocab = vocab or default_vocab(paths)
+    drop = default_drop(paths, vocab) if drop is None else drop
     train = training_slide_dirs(paths)
     if train:
         return fit(tissue_embeddings(paths, per_slide=4000, slide_dirs=train), paths, drop=drop,
-                   source=f"{len(train)} probe training slides")
-    return fit(tissue_embeddings(paths, per_slide=4000), paths, drop=drop, source="bundle slides")
+                   source=f"{len(train)} probe training slides", vocab=vocab)
+    return fit(tissue_embeddings(paths, per_slide=4000), paths, drop=drop, source="bundle slides", vocab=vocab)
 
 
 if __name__ == "__main__":
+    import sys
+
     paths = bundle_paths()
-    e = fit_default(paths)
+    e = fit_default(paths, vocab=sys.argv[1] if len(sys.argv) > 1 else None)
     print(save(e, paths), e.meta)
     print({l: round(float(w), 2) for l, w in zip(e.labels, e.weight)})
