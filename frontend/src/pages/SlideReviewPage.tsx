@@ -13,6 +13,7 @@ import NotesSection, { NOTES_ID } from '../components/review/NotesSection'
 import ReplayPanel from '../components/review/ReplayPanel'
 import ContextPanel from '../components/ContextPanel'
 import ClefPanel from '../components/ClefPanel'
+import ConceptWords from '../components/ConceptWords'
 import ReviewToolbar, { type LayerKey, type Layers } from '../components/review/ReviewToolbar'
 import ShortcutHelp from '../components/review/ShortcutHelp'
 import SlideViewer, { type LayerSpec, type ViewerControls, type ViewerStatus, type ViewportReport } from '../components/review/SlideViewer'
@@ -745,7 +746,12 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
                   <EvidenceTab ev={ev} loading={evLoading} replaying={replay.active} evidenceRegions={evRegions} onJump={jump}
                     activeTarget={activeTarget} evalDocs={evalDocs}
                     reviews={read && read.source === 'live' && read.evidence_visible && !readOnly ? read.feature_reviews : null}
-                    reviewKey={read?.read_id ?? ''} onReview={reviewFeature} onOpenNotes={openNotes} />
+                    reviewKey={read?.read_id ?? ''} onReview={reviewFeature} onOpenNotes={openNotes}
+                    words={evidenceVisible && !replay.active ? (() => {
+                      const reg = evRegions.find((r) => r.region_id === activeTarget) ?? null
+                      return <ConceptWords caseId={detail.case_id} readId={read?.read_id} tileId={ev?.tile_id ?? null}
+                        regionId={reg?.region_id ?? null} regionLabel={reg ? `region #${reg.rank}` : null} />
+                    })() : null} />
                 )}
                 {tab === 'layout' && !evidenceVisible && (
                   <p className="small muted side-empty">The tissue layout is AI evidence: it unlocks once your blind call is recorded.</p>

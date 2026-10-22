@@ -66,6 +66,12 @@ if os.environ.get("SECONDLOOK_CLEF", "1") != "0":
 
     app.include_router(clef_service.router, prefix="/api")
 
+# optional concept explanations ("why is this tumour?" in words); SECONDLOOK_CONCEPTS=0 turns it off
+if os.environ.get("SECONDLOOK_CONCEPTS", "1") != "0":
+    from secondlook.api.services import concepts as concepts_service
+
+    app.include_router(concepts_service.router, prefix="/api")
+
 _dist = REPO_ROOT / "frontend" / "dist"
 if _dist.exists():
     app.mount("/assets", StaticFiles(directory=_dist / "assets"), name="assets")
