@@ -12,6 +12,7 @@ interface Result {
 interface CaseMatch { case_id: string; slide_id: string; strength: number; level: string; tile_id: string; rect: Rect }
 interface Cases { hidden: boolean; matches: CaseMatch[]; n_cases: number; n_hidden: number; this_rank: number | null; this_level: string | null }
 interface Suggestion { phrase: string; label: string; id: string }
+interface Term { label: string; group: string }
 
 interface Props {
   caseId: string
@@ -34,6 +35,10 @@ async function call<T>(path: string): Promise<T> {
 }
 
 const LEVEL: Record<string, string> = { strong: 'strong match', medium: 'medium match', weak: 'weak match' }
+const GROUPS: [string, string][] = [
+  ['tumour', 'Tumour cells'], ['normal', 'Normal lymph node'], ['immune', 'Immune cells'],
+  ['other', 'Other tissue'], ['artifact', 'Slide artifacts'],
+]
 
 export default function SearchPanel({ caseId, readId, query, hidden, onSearch, onSpot, onOpenCase }: Props) {
   const [res, setRes] = useState<Result | null>(null)
@@ -42,10 +47,11 @@ export default function SearchPanel({ caseId, readId, query, hidden, onSearch, o
   const [busy, setBusy] = useState(false)
   const [at, setAt] = useState(0)
   const [sugg, setSugg] = useState<Suggestion[]>([])
+  const [terms, setTerms] = useState<Term[]>([])
   const [off, setOff] = useState(false)
 
   useEffect(() => {
-    call<{ phrases: Suggestion[] }>('/search/suggestions').then((d) => setSugg(d.phrases))
+    call<{ phrases: Suggestion[]; terms?: Term[] }>('/search/suggestions').then((d) => { setSugg(d.phrases); setTerms(d.terms ?? []) })
       .catch((e) => { if (e.status === 404) setOff(true) })
   }, [])
 
@@ -85,6 +91,17 @@ export default function SearchPanel({ caseId, readId, query, hidden, onSearch, o
           <div className="srch-chips">
             {sugg.map((s) => <button key={s.id} className="srch-chip" onClick={() => onSearch(s.label)}>{s.label}</button>)}
           </div>
+          {GROUPS.map(([g, title]) => {
+            const ts = terms.filter((x) => x.group === g)
+            return ts.length ? (
+              <details key={g} className="srch-group" open={g === 'tumour'}>
+                <summary className="small">{title} <span className="muted">({ts.length})</span></summary>
+                <div className="srch-chips">
+                  {ts.map((x) => <button key={x.label} className="srch-chip" onClick={() => onSearch(x.label)}>{x.label}</button>)}
+                </div>
+              </details>
+            ) : null
+          })}
         </>
       )}
       {busy && <p className="small muted">Searching…</p>}

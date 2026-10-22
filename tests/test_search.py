@@ -48,3 +48,19 @@ def test_blind_reads_stay_blind_and_free_text_needs_the_encoder(client, monkeypa
     search._encoder.clear(); search._vectors.clear()
     r = c.get(f"/api/cases/{CASE}/search", params={"q": "signet ring cells"})
     assert r.status_code == 503 and "isn't set up" in r.json()["detail"]
+
+
+def test_vocabulary_terms_are_searchable_without_a_model(client, bundle, monkeypatch):
+    """Terms from the saved lymph-node vocabulary use their concept direction directly."""
+    c, _, tiles = client
+    paths = bundle[0]
+    want = _bank_and_embeddings(paths, tiles, monkeypatch)
+    from secondlook.pipeline.concepts import vocab_path
+
+    np.savez(vocab_path(paths, search.PRIMARY_MODEL), version=np.array("t"), ids=np.array(["nests"]),
+             labels=np.array(["tumour cell nests"]), groups=np.array(["tumour"]),
+             directions=np.eye(4, dtype=np.float32)[:1])
+    search._vocab.clear()
+    assert {"label": "tumour cell nests", "group": "tumour"} in c.get("/api/search/suggestions").json()["terms"]
+    r = c.get(f"/api/cases/{CASE}/search", params={"q": "Tumour cell nests", "k": 5}).json()
+    assert r["source"] == "lymph-node term" and {s["tile_id"] for s in r["spots"]} == want

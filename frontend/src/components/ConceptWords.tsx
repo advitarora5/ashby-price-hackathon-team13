@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState, type ReactNode } from 'react'
 
 // Optional concept explanation ("why is this tumour?" in words), self-contained: fetches its own data.
 // Hidden entirely when the backend route is off (SECONDLOOK_CONCEPTS=0) or nothing is fitted.
@@ -17,13 +17,15 @@ interface Props {
   tileId: string | null
   regionId: string | null
   regionLabel: string | null
+  /** search the slide for one of the words (tissue search); omitted when search is off */
+  onSearch?: (phrase: string) => void
 }
 
 const phrase = (c: Concept) => (c.similarity_sd >= 0 ? `looks like ${c.label.toLowerCase()}` : `little ${c.label.toLowerCase()}`)
 const opposite = (c: Concept) => (c.similarity_sd >= 0 ? `less like ${c.label.toLowerCase()}` : `more like ${c.label.toLowerCase()}`)
-const list = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`)
+const list = (xs: ReactNode[]) => xs.flatMap((x, i) => (i === 0 ? [x] : [i === xs.length - 1 ? ' and ' : ', ', x]))
 
-export default function ConceptWords({ caseId, readId, tileId, regionId, regionLabel }: Props) {
+export default function ConceptWords({ caseId, readId, tileId, regionId, regionLabel, onSearch }: Props) {
   const [ex, setEx] = useState<Explanation | null>(null)
   const [off, setOff] = useState(false)
 
@@ -48,6 +50,10 @@ export default function ConceptWords({ caseId, readId, tileId, regionId, regionL
   const top = (tumourish ? ex.for : ex.against).slice(0, 3)
   const other = (tumourish ? ex.against : ex.for).slice(0, 2)
   if (!top.length) return null
+  // each word links to tissue search, so "why" leads straight to "where"
+  const word = (c: Concept, text: string) => (onSearch
+    ? <button key={c.id} type="button" className="link-btn" title={`Show where the slide looks like ${c.label}`} onClick={() => onSearch(c.label)}>{text}</button>
+    : <Fragment key={c.id}>{text}</Fragment>)
 
   return (
     <div className="cw" aria-live="polite">
@@ -56,19 +62,19 @@ export default function ConceptWords({ caseId, readId, tileId, regionId, regionL
         <span className="xs muted">{ex.target.region ? `${regionLabel ?? 'region'} · ${ex.target.n_tiles} tiles` : 'selected tile'}</span>
       </div>
       <p className="small cw-line">
-        <b>{tumourish ? 'Scored as tumour because it' : 'Scored as benign because it'}</b> {list(top.map(phrase))}
-        {other.length > 0 && <span className="muted"> · weighing the other way: {list(other.map(phrase))}</span>}
+        <b>{tumourish ? 'Scored as tumour because it' : 'Scored as benign because it'}</b> {list(top.map((c) => word(c, phrase(c))))}
+        {other.length > 0 && <span className="muted"> · weighing the other way: {list(other.map((c) => word(c, phrase(c))))}</span>}
       </p>
       {tumourish && (
         <p className="small cw-line">
-          <b>To call it benign</b>, the AI would need it to look {list(top.slice(0, 2).map(opposite))}.
+          <b>To call it benign</b>, the AI would need it to look {list(top.slice(0, 2).map((c) => word(c, opposite(c))))}.
         </p>
       )}
       <p className="xs muted cw-foot">
         {ex.explained_share !== null && tumourish && moved > 2
           ? `These words account for about ${Math.round(Math.min(1, ex.explained_share) * 100)}% of the score. `
           : ''}
-        What the AI relies on, read through CONCH's text concepts; not a diagnosis.
+        {onSearch ? 'Click a word to see where it appears on the slide. ' : ''}What the AI relies on, read through CONCH's text concepts; not a diagnosis.
       </p>
     </div>
   )

@@ -66,3 +66,6 @@
 .cw-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
 .cw-line { margin: 4px 0; }
 .cw-foot { margin: 6px 0 0; }
+.srch-group { margin: 4px 0; }
+.srch-group summary { cursor: pointer; color: var(--c-text); }
+.cw .link-btn { font-size: inherit; }

@@ -10,7 +10,9 @@ for "metastatic carcinoma" were 90-100% inside the expert tumour outline, but no
 told tumour slides from normal ones reliably (best slide-level AUROC ~0.81), so "nothing here" is
 left to the reader.
 
-Phrases that name a feature in config/features.yaml use the exported text bank (no model needed).
+Phrases that name a feature in config/features.yaml use the exported text bank, and the 61
+lymph-node terms in config/concepts_lymph_node.yaml use their saved concept directions (the same ones
+the "In words" explanation uses; scripts/build_concept_vocab.py); neither needs a model at run time.
 Any other phrase needs the primary model's text encoder (torch + weights) on this machine; without
 it the route answers 503 with the reason. SECONDLOOK_SEARCH=0 turns the feature off.
 """
@@ -39,6 +41,7 @@ CONTRAST = ["normal lymph node tissue", "benign tissue"]
 MAX_QUERY = 120
 _lock = threading.Lock()
 _bank: dict[str, dict] = {}
+_vocab: dict[str, dict | None] = {}
 _encoder: dict[str, object] = {}
 _vectors: dict[tuple[str, str], tuple[np.ndarray, np.ndarray, float, str, str]] = {}
 _cohort: dict[tuple[str, str], list[dict]] = {}
@@ -54,6 +57,25 @@ def _norm(q: str) -> str:
 
 def suggestions() -> list[dict]:
     return [{"phrase": f.positive[0], "label": f.label, "id": f.id} for f in features()]
+
+
+def vocabulary(store: Store) -> dict | None:
+    """{normalised label or id: (direction [D], label, group)} from the saved lymph-node vocabulary."""
+    key = str(store.paths.root)
+    if key not in _vocab:
+        from secondlook.pipeline.concepts import vocab_path
+
+        p = vocab_path(store.paths, PRIMARY_MODEL)
+        if not p.exists():
+            _vocab[key] = None
+        else:
+            d = np.load(p)
+            terms = {}
+            for i, l, g, v in zip(d["ids"], d["labels"], d["groups"], d["directions"]):
+                entry = (np.asarray(v, np.float32), str(l), str(g))
+                terms[_norm(str(l))] = terms[_norm(str(i).replace("_", " "))] = entry
+            _vocab[key] = terms
+    return _vocab[key]
 
 
 def _text_bank(store: Store) -> dict | None:
@@ -86,10 +108,15 @@ def query_vectors(store: Store, raw: str) -> tuple[np.ndarray, np.ndarray, float
         return _vectors[key]
     tb = _text_bank(store)
     fid = _builtin(q)
+    term = (vocabulary(store) or {}).get(q)
     if fid and tb and fid in tb["bank"]:
         pos, neg = tb["bank"][fid]
         label = next(f.label for f in features() if f.id == fid)
         out = (pos, neg, tb["logit_scale"], "built-in phrase", label)
+    elif term is not None:
+        # a concept direction is already text(phrase) - text(neutral): use it as phrase-minus-contrast
+        direction, label, _ = term
+        out = (direction, np.zeros_like(direction), tb["logit_scale"] if tb else 100.0, "lymph-node term", label)
     else:
         with _lock:
             enc = _encoder.get(PRIMARY_MODEL)
@@ -144,8 +171,13 @@ def _vec_or_503(store: Store, q: str):
 
 
 @router.get("/search/suggestions")
-def get_suggestions():
-    return {"phrases": suggestions(), "contrast": CONTRAST[0], "model": PRIMARY_MODEL}
+def get_suggestions(store: Store = Depends(get_store)):
+    terms, seen = [], set()
+    for _, label, group in (vocabulary(store) or {}).values():
+        if label not in seen:
+            seen.add(label)
+            terms.append({"label": label, "group": group})
+    return {"phrases": suggestions(), "terms": terms, "contrast": CONTRAST[0], "model": PRIMARY_MODEL}
 
 
 @router.get("/cases/{case_id}/search")

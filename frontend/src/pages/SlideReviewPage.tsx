@@ -126,6 +126,12 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
   const [searchDraft, setSearchDraft] = useState('')
   const [searchSpot, setSearchSpot] = useState<{ tile_id: string; rect: Rect; rank: number } | null>(null)
   const searchBox = useRef<HTMLInputElement | null>(null)
+  const [searchTerms, setSearchTerms] = useState<string[]>([])
+  useEffect(() => {
+    fetch('/api/search/suggestions').then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setSearchTerms([...d.phrases.map((p: { label: string }) => p.label), ...(d.terms ?? []).map((t: { label: string }) => t.label)]) })
+      .catch(() => undefined)
+  }, [])
   const [activeTarget, setActiveTarget] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [readNote, setReadNote] = useState<string | null>(null)
@@ -696,7 +702,8 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
             <form className="tb-search" role="search" onSubmit={(e) => { e.preventDefault(); runSearch(searchDraft) }}>
               <input ref={searchBox} value={searchDraft} onChange={(e) => setSearchDraft(e.target.value)}
                 placeholder={evidenceVisible ? 'Search tissue…' : 'Search unlocks after your call'} disabled={!evidenceVisible || replay.active}
-                aria-label="Search this slide for tissue described in words (Cmd or Ctrl+F)" title="Search this slide in words (⌘F)" />
+                aria-label="Search this slide for tissue described in words (Cmd or Ctrl+F)" title="Search this slide in words (⌘F)" list="srch-terms" />
+              <datalist id="srch-terms">{searchTerms.map((t) => <option key={t} value={t} />)}</datalist>
               <kbd className="tb-search-k">⌘F</kbd>
             </form>
           }
@@ -787,7 +794,7 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
                     words={evidenceVisible && !replay.active ? (() => {
                       const reg = evRegions.find((r) => r.region_id === activeTarget) ?? null
                       return <ConceptWords caseId={detail.case_id} readId={read?.read_id} tileId={ev?.tile_id ?? null}
-                        regionId={reg?.region_id ?? null} regionLabel={reg ? `region #${reg.rank}` : null} />
+                        regionId={reg?.region_id ?? null} regionLabel={reg ? `region #${reg.rank}` : null} onSearch={runSearch} />
                     })() : null} />
                 )}
                 {tab === 'search' && (
