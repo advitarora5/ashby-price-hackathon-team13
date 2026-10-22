@@ -42,7 +42,7 @@
 .tb-search input:focus { outline: none; border-color: var(--c-primary); box-shadow: var(--focus-ring); }
 .tb-search input:disabled { background: var(--c-surface-2); color: var(--c-text-2); cursor: not-allowed; }
 .tb-search-k { position: absolute; right: 6px; font: inherit; font-size: 10.5px; color: var(--c-text-2); border: 1px solid var(--c-border); border-radius: var(--r-sm); padding: 0 4px; pointer-events: none; }
-.tone-search { border-color: #e1690a; border-width: 2px; } .tone-search span { background: #e1690a; }
+.tone-search { border-color: #146ed2; border-width: 2px; } .tone-search span { background: #146ed2; }
 .srch { padding: var(--sp-3); margin-bottom: var(--sp-3); }
 .srch .panel-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--sp-2); }
 .srch h3 { margin: 0; font-size: var(--fs-md); font-weight: var(--fw-semibold); }
@@ -57,7 +57,7 @@
 .srch-grid { grid-template-columns: repeat(5, 1fr); }
 .srch-spots li.on { background: var(--c-primary-tint); }
 .srch-bar { height: 6px; background: var(--c-surface-sunken); border-radius: 3px; overflow: hidden; }
-.srch-bar span { display: block; height: 100%; background: #e1690a; }
+.srch-bar span { display: block; height: 100%; background: #146ed2; }
 .srch-cases { margin-top: var(--sp-3); }
 .srch-cases ul { margin: 4px 0; padding-left: 16px; }
 .srch-method { margin-top: var(--sp-3); }
