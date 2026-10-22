@@ -70,7 +70,7 @@ def run() -> dict:
     order = [int(k) for k in np.argsort(-np.abs(e.weight)) if e.weight[k] != 0]
     rng = np.random.default_rng(0)
     deletion = []
-    for k in (1, 2, 3):
+    for k in (1, 2, 3, len(order)):
         top = _erase(X, e.C[order[:k]]) @ e.v + e.b
         rand = [_erase(X, rng.normal(size=(k, X.shape[1]))) @ e.v + e.b for _ in range(N_RANDOM)]
         rand_auc = [auroc(y, r) for r in rand]
@@ -79,31 +79,31 @@ def run() -> dict:
                          "auroc_after_random_mean": float(np.mean(rand_auc)),
                          "drop_vs_random_ci": boot(lambda i: auroc(y[i], r0[i]) - auroc(y[i], top[i]))})
 
-    no_label = cx.fit(cx.tissue_embeddings(paths, per_slide=4000), paths, drop=("metastasis",))
-    nl = no_label.words_logit(X)
-    sanity = {"without": "Metastatic carcinoma", "words_only_auroc": auroc(y, nl),
-              "words_only_ci": boot(lambda i: auroc(y[i], nl[i])),
-              "weights": {l: round(float(w), 3) for l, w in sorted(zip(no_label.labels, no_label.weight), key=lambda x: -abs(x[1])) if abs(w) >= 0.1},
-              "r2_vs_probe_logit": no_label.meta["r2_vs_probe_logit"]}
+    with_label = cx.fit_default(paths, drop=())
+    wl = with_label.words_logit(X)
+    sanity = {"with": "Metastatic carcinoma", "words_only_auroc": auroc(y, wl),
+              "words_only_ci": boot(lambda i: auroc(y[i], wl[i])),
+              "weights": {l: round(float(w), 3) for l, w in sorted(zip(with_label.labels, with_label.weight), key=lambda x: -abs(x[1])) if abs(w) >= 0.1},
+              "r2_vs_probe_logit": with_label.meta["r2_vs_probe_logit"]}
 
     tum = np.flatnonzero(y == 1)
     contrib = e.weight * (e.z(X[tum]) - e.baseline)
     top_for = pd.Series([e.labels[j] for j in contrib.argmax(1)]).value_counts(normalize=True).round(3).to_dict()
 
-    d0 = deletion[-1]
-    head = [{"label": "Tumour found by the 11 words alone (AUROC, tiles)", "value": f"{fidelity['words_only_auroc']:.3f}",
+    d0 = deletion[-1]  # all words together; the detector has backups, so small subsets matter little
+    head = [{"label": f"Tumour found by the {len(e.ids)} morphology words alone (AUROC, held-out test tiles)", "value": f"{fidelity['words_only_auroc']:.3f}",
              "ci": f"{fidelity['words_only_ci'][0]:.3f}-{fidelity['words_only_ci'][1]:.3f}",
              "note": f"full detector {fidelity['full_probe_auroc']:.3f}; words reproduce R^2 {fidelity['r2_words_vs_probe_logit']:.2f} of its score"},
-            {"label": f"Erasing the top {d0['k']} words lowers tumour AUROC to", "value": f"{d0['auroc_after']:.3f}",
+            {"label": f"Erasing all {d0['k']} words from the tiles lowers the detector's AUROC to", "value": f"{d0['auroc_after']:.3f}",
              "ci": f"drop vs random {d0['drop_vs_random_ci'][0]:+.3f} to {d0['drop_vs_random_ci'][1]:+.3f}",
              "note": f"erasing {d0['k']} random directions: {d0['auroc_after_random_mean']:.3f}"},
-            {"label": "Without the word 'metastatic carcinoma' (morphology only)", "value": f"{sanity['words_only_auroc']:.3f}",
-             "note": "carried by " + ", ".join(sanity["weights"])}]
+            {"label": "With the circular word 'metastatic carcinoma' added back", "value": f"{sanity['words_only_auroc']:.3f}",
+             "note": "the shown explanation leaves it out; carried by " + ", ".join(sanity["weights"])}]
     doc = {"title": "Concept explanations (CoCoX-style) are faithful to the tumour probe", "measure": "interpretability",
            "dataset": f"CAMELYON16 test tiles ({len(y)} tiles, {int(y.sum())} tumour, {len(np.unique(g))} slides)",
            "headline": head, "available": True, "model": e.model, "explainer": e.meta,
            "weights": {l: round(float(w), 3) for l, w in zip(e.labels, e.weight)},
-           "fidelity": fidelity, "deletion": deletion, "sanity_without_label_concept": sanity,
+           "fidelity": fidelity, "deletion": deletion, "with_label_concept": sanity,
            "top_reason_on_tumour_tiles": top_for, "bootstrap": f"by slide, {REPS} reps",
            "caveats": ["11 concepts from the feature text bank; a larger vocabulary needs the CONCH text encoder.",
                        "Explains what the probe relies on, not biology; fitted to the probe, not to labels."]}

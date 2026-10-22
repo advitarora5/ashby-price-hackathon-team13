@@ -27,6 +27,9 @@ import numpy as np
 from secondlook.config import PRIMARY_MODEL, BundlePaths, bundle_paths
 
 BENIGN_PROB = 0.1        # baseline: tiles the probe calls clearly benign
+# "metastatic carcinoma" is left out of the shown explanation: "tumour because it looks like tumour"
+# is circular. Without it, morphology concepts alone carry the score (eval/concepts_eval.py).
+DEFAULT_DROP = ("metastasis",)
 FIT_TILES = 80_000       # tiles sampled across slides to fit the surrogate
 VERSION = "concepts_v1"
 
@@ -99,8 +102,8 @@ class Explainer:
                 "concepts": rows}
 
 
-def fit(X: np.ndarray, paths: BundlePaths, model: str = PRIMARY_MODEL, drop: tuple[str, ...] = (),
-        seed: int = 0) -> Explainer:
+def fit(X: np.ndarray, paths: BundlePaths, model: str = PRIMARY_MODEL, drop: tuple[str, ...] = DEFAULT_DROP,
+        seed: int = 0, source: str = "bundle") -> Explainer:
     """Fit the sign-constrained surrogate to the probe's logits on tissue tiles X (labels not used)."""
     from scipy.optimize import nnls
 
@@ -124,7 +127,7 @@ def fit(X: np.ndarray, paths: BundlePaths, model: str = PRIMARY_MODEL, drop: tup
     benign = 1 / (1 + np.exp(-logit)) < BENIGN_PROB
     baseline = Z[benign].mean(0) if benign.any() else np.zeros(len(ids), np.float32)
     meta = {"version": VERSION, "model": model, "n_fit": int(len(X)), "r2_vs_probe_logit": round(r2, 4),
-            "dropped": list(drop), "benign_prob": BENIGN_PROB,
+            "dropped": list(drop), "benign_prob": BENIGN_PROB, "fit_on": source,
             "method": "sign-constrained least squares of the probe logit on CONCH concept similarities (CoCoX-style)"}
     return Explainer(model, ids, labels, C, mu.astype(np.float32), sd.astype(np.float32), weight, offset,
                      baseline.astype(np.float32), v, b, meta)
@@ -152,16 +155,30 @@ def load(paths: BundlePaths, model: str = PRIMARY_MODEL) -> Explainer | None:
     return Explainer(model, ids, labels, C, a("mu"), a("sd"), a("weight"), float(d["offset"]), a("baseline"), v, b, d["meta"])
 
 
-def tissue_embeddings(paths: BundlePaths, model: str = PRIMARY_MODEL, per_slide: int | None = None, seed: int = 0):
-    """Embeddings of tissue tiles (no blank/artifact) from every scored slide in the bundle."""
+def training_slide_dirs(paths: BundlePaths) -> list[Path]:
+    """Work folders of the slides the tumour probe was trained on (manifest), when on this machine."""
+    from secondlook.config import WORK_DIR
+
+    if not paths.manifest.exists():
+        return []
+    names = json.loads(paths.manifest.read_text()).get("tumor_probe", {}).get("train_slides", [])
+    return [WORK_DIR / "camelyon16" / n for n in names if (WORK_DIR / "camelyon16" / n / "tiles.parquet").exists()]
+
+
+def tissue_embeddings(paths: BundlePaths, model: str = PRIMARY_MODEL, per_slide: int | None = None, seed: int = 0,
+                      slide_dirs: list[Path] | None = None):
+    """Embeddings of tissue tiles (no blank/artifact): every scored slide in the bundle, or the given
+    work folders (each with tiles.parquet and emb_<model>.npy)."""
     import pandas as pd
 
     from secondlook.store.arrays import AlignmentError, read_matrix
 
     rng = np.random.default_rng(seed)
     out = []
-    for d in sorted((paths.root / "slides").iterdir()):
-        tp, ep = d / "tiles.parquet", paths.embedding(d.name, model)
+    dirs = slide_dirs if slide_dirs is not None else sorted((paths.root / "slides").iterdir())
+    for d in dirs:
+        tp = d / "tiles.parquet"
+        ep = d / f"emb_{model}.npy" if slide_dirs is not None else paths.embedding(d.name, model)
         if not tp.exists() or not ep.exists():
             continue
         t = pd.read_parquet(tp)
@@ -181,8 +198,18 @@ def tissue_embeddings(paths: BundlePaths, model: str = PRIMARY_MODEL, per_slide:
     return np.concatenate(out)
 
 
+def fit_default(paths: BundlePaths, drop: tuple[str, ...] = DEFAULT_DROP) -> Explainer:
+    """Fit on the probe's training slides when they are on this machine (so the test slides stay
+    held out), else on the bundle's slides."""
+    train = training_slide_dirs(paths)
+    if train:
+        return fit(tissue_embeddings(paths, per_slide=4000, slide_dirs=train), paths, drop=drop,
+                   source=f"{len(train)} probe training slides")
+    return fit(tissue_embeddings(paths, per_slide=4000), paths, drop=drop, source="bundle slides")
+
+
 if __name__ == "__main__":
     paths = bundle_paths()
-    e = fit(tissue_embeddings(paths, per_slide=4000), paths)
+    e = fit_default(paths)
     print(save(e, paths), e.meta)
     print({l: round(float(w), 2) for l, w in zip(e.labels, e.weight)})
