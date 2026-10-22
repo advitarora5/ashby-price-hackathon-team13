@@ -224,8 +224,9 @@ def search_overlay(case_id: str, q: str = Query(...), read_id: str | None = None
     img = _grid_rgba(sd)
     r, c = sd.rows, sd.cols
     light, strong = order[n:2 * n], order[:n]
-    img[r[light], c[light]] = (240, 150, 40, 70)
-    img[r[strong], c[strong]] = (225, 105, 10, 140)
+    # blue, so search hits never read as the orange tumour heatmap
+    img[r[light], c[light]] = (90, 170, 235, 90)
+    img[r[strong], c[strong]] = (20, 110, 210, 170)
     return Response(_png(img), media_type="image/png", headers={"Cache-Control": "no-store"})
 
 

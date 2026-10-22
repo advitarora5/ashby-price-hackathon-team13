@@ -1,4 +1,4 @@
--- SecondLook application database. Small answers live here; big arrays live in
+-- Claripath application database. Small answers live here; big arrays live in
 -- Parquet/.npy files referenced by artifact_manifests. All ids are stable strings.
 PRAGMA foreign_keys = ON;
 

@@ -63,7 +63,13 @@ def explain(case_id: str, tile: str | None = None, region: str | None = None, re
             emb = store.embedding(sd, e.model)
         except Unavailable as err:
             return {"hidden": False, "available": False, "reason": err.reason}
-        out = e.explain(np.asarray(emb, np.float32)[rows])
+        X = np.asarray(emb, np.float32)[rows]
+        if region:
+            # a region box also holds normal tissue; explain the tiles that drove the flag
+            hot = (X @ e.v + e.b) > 0
+            if hot.any():
+                rows, X = rows[hot], X[hot]
+        out = e.explain(X)
         audit(con, "concepts_shown", read_id=read_id, case_id=case_id, ai_visible=True,
               detail={"tile": tile, "region": region})
         con.commit()

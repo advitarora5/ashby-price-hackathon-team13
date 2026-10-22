@@ -1,7 +1,7 @@
 # Findings Clef reads from free text (a reader's notes or a pathology report).
 # Each finding becomes one three-way question: present / absent / not mentioned.
 #
-# feature: the SecondLook feature bar the finding is checked against on the slide;
+# feature: the Claripath feature bar the finding is checked against on the slide;
 #          none = the AI on this slide cannot check it (shown as "cannot check").
 # keywords: only for the keyword baseline in eval/report_mining.py (Clef never sees them).
 # Wording to be checked by the on-site expert.

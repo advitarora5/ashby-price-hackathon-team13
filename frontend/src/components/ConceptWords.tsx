@@ -21,7 +21,7 @@ interface Props {
   onSearch?: (phrase: string) => void
 }
 
-const phrase = (c: Concept) => (c.similarity_sd >= 0 ? `looks like ${c.label.toLowerCase()}` : `little ${c.label.toLowerCase()}`)
+const phrase = (c: Concept) => (c.similarity_sd >= 0 ? `looks like ${c.label.toLowerCase()}` : `has little ${c.label.toLowerCase()}`)
 const opposite = (c: Concept) => (c.similarity_sd >= 0 ? `less like ${c.label.toLowerCase()}` : `more like ${c.label.toLowerCase()}`)
 const list = (xs: ReactNode[]) => xs.flatMap((x, i) => (i === 0 ? [x] : [i === xs.length - 1 ? ' and ' : ', ', x]))
 
@@ -59,7 +59,7 @@ export default function ConceptWords({ caseId, readId, tileId, regionId, regionL
     <div className="cw" aria-live="polite">
       <div className="cw-head">
         <span className="signal-name">In words</span>
-        <span className="xs muted">{ex.target.region ? `${regionLabel ?? 'region'} · ${ex.target.n_tiles} tiles` : 'selected tile'}</span>
+        <span className="xs muted">{ex.target.region ? `${regionLabel ?? 'region'} · its ${ex.target.n_tiles} tumour-scoring tiles` : 'selected tile'}</span>
       </div>
       <p className="small cw-line">
         <b>{tumourish ? 'Scored as tumour because it' : 'Scored as benign because it'}</b> {list(top.map((c) => word(c, phrase(c))))}

@@ -119,7 +119,7 @@ export default function SearchPanel({ caseId, readId, query, hidden, onSearch, o
             <b>"{res.query}"</b>
             <button className="link-btn small" onClick={() => onSearch('')}>clear</button>
           </div>
-          <p className="small muted">Highlighted: the best-matching {res.n_highlighted} of {res.n_tissue} tissue tiles (top 1%, darker = stronger).</p>
+          <p className="small muted">Highlighted in blue: the best-matching {res.n_highlighted} of {res.n_tissue} tissue tiles (top 1%, darker = stronger).</p>
           <div className="srch-step">
             <span className="small"><b>Best spots</b> · {at + 1} of {res.spots.length}</span>
             <span className="srch-step-btns">
