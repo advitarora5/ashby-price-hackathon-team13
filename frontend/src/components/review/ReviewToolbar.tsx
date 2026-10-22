@@ -41,6 +41,8 @@ interface Props {
   navigator: boolean
   onNavigator: () => void
   onShortcuts: () => void
+  /** optional slot after "Hide all" (tissue search box) */
+  search?: ReactNode
   prevCase: { href: string; label: string } | null
   nextCase: { href: string; label: string } | null
 }
@@ -96,6 +98,7 @@ export default function ReviewToolbar(p: Props) {
             title="Hide or show all overlays (H)" className="tb-hideall" aria-label={p.allHidden ? 'Show overlays (H)' : 'Hide all overlays (H)'}>
             <span className="tb-label">{p.allHidden ? 'Show' : 'Hide all'}</span>
           </Button>
+          {p.search}
           <span className="toolbar-spacer" />
           <span className={`zoom-chip num ${low ? 'is-low' : ''}`} role="status"
             title={low ? `Below ${p.minMag}×: tissue on screen is not counted as viewed` : `At ≥${p.minMag}× tissue on screen counts as viewed`}>

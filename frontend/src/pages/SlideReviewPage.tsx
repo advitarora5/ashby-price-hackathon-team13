@@ -13,6 +13,8 @@ import NotesSection, { NOTES_ID } from '../components/review/NotesSection'
 import ReplayPanel from '../components/review/ReplayPanel'
 import ContextPanel from '../components/ContextPanel'
 import ClefPanel from '../components/ClefPanel'
+import SearchPanel from '../components/SearchPanel'
+import ConceptWords from '../components/ConceptWords'
 import ReviewToolbar, { type LayerKey, type Layers } from '../components/review/ReviewToolbar'
 import ShortcutHelp from '../components/review/ShortcutHelp'
 import SlideViewer, { type LayerSpec, type ViewerControls, type ViewerStatus, type ViewportReport } from '../components/review/SlideViewer'
@@ -34,7 +36,7 @@ import type {
 } from '../types'
 
 const DEFAULT_LAYERS: Layers = { risk: true, disagreement: false, artifact: false, coverage: false, regions: true }
-type TabId = 'evidence' | 'layout' | 'unseen' | 'model' | 'decision'
+type TabId = 'evidence' | 'search' | 'layout' | 'unseen' | 'model' | 'decision'
 const cap = (s: string | null | undefined) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '')
 
 /** Everything needed to return to a case in this session without starting a new read. */
@@ -119,6 +121,17 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
   // tiles outlined by the Layout and Notes-check panels; a pending jump from "find similar arrangements"
   const [ctxBoxes, setCtxBoxes] = useState<{ rects: Rect[]; label: string } | null>(null)
   const pendingAt = useRef<{ caseId: string; tile: string; rect: Rect } | null>(null)
+  // tissue search: the phrase (kept across cases, so a match in another case opens with it) and the spot in view
+  const [searchQ, setSearchQ] = useState<string | null>(null)
+  const [searchDraft, setSearchDraft] = useState('')
+  const [searchSpot, setSearchSpot] = useState<{ tile_id: string; rect: Rect; rank: number } | null>(null)
+  const searchBox = useRef<HTMLInputElement | null>(null)
+  const [searchTerms, setSearchTerms] = useState<string[]>([])
+  useEffect(() => {
+    fetch('/api/search/suggestions').then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setSearchTerms([...d.phrases.map((p: { label: string }) => p.label), ...(d.terms ?? []).map((t: { label: string }) => t.label)]) })
+      .catch(() => undefined)
+  }, [])
   const [activeTarget, setActiveTarget] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [readNote, setReadNote] = useState<string | null>(null)
@@ -339,7 +352,8 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     const at = pendingAt.current
     if (!at || !read || detail?.case_id !== at.caseId) return
     pendingAt.current = null
-    loadEvidence(at.caseId, read, { tile: at.tile }).then(() => setFocus({ rect: at.rect, key: Date.now() }))
+    if (at.tile) loadEvidence(at.caseId, read, { tile: at.tile }).then(() => setFocus({ rect: at.rect, key: Date.now() }))
+    else setFocus({ rect: at.rect, key: Date.now() })
   }, [read, detail, loadEvidence])
 
   const onViewport = useCallback((v: ViewportReport) => {
@@ -486,11 +500,13 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     if (evidenceVisible && !replay.active && layers.disagreement && detail.layers.includes('disagreement'))
       out.push({ key: 'disagreement', url: api.overlayUrl(detail.case_id, 'disagreement', read?.read_id), opacity: Math.min(1, heatOpacity + 0.15) })
     if (layers.coverage && coverageUrl) out.push({ key: 'coverage', url: coverageUrl, opacity: inspectDim ? 0.35 : 1 })
+    if (searchQ && evidenceVisible && !replay.active)
+      out.push({ key: `search:${searchQ}`, url: `/api/cases/${detail.case_id}/search/overlay.png?q=${encodeURIComponent(searchQ)}${read ? `&read_id=${read.read_id}` : ''}`, opacity: inspectDim ? 0.3 : 0.7 })
     return out
-  }, [detail, layers, evidenceVisible, read, coverageUrl, replay.active, heatOpacity, allHidden, inspectDim])
+  }, [detail, layers, evidenceVisible, read, coverageUrl, replay.active, heatOpacity, allHidden, inspectDim, searchQ])
 
   const boxes = useMemo(() => {
-    const out: { region: Region; tone: 'evidence' | 'disputed' | 'unseen' | 'selected' | 'context'; label: string }[] = []
+    const out: { region: Region; tone: 'evidence' | 'disputed' | 'unseen' | 'selected' | 'context' | 'search'; label: string }[] = []
     if (allHidden) return out
     const quiet = alerts.length > 0
     if (evidenceVisible && layers.regions && !replay.active) {
@@ -498,12 +514,14 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
       if (layers.disagreement) disputed.slice(0, 3).forEach((r) => out.push({ region: r, tone: 'disputed', label: `#${r.rank} models disagree` }))
     }
     alerts.forEach((r) => out.push({ region: r, tone: 'unseen', label: r.alert_status === 'revisited' ? `Region ${r.rank} · revisited` : `Not yet viewed · ${r.rank}` }))
+    if (searchSpot && searchQ && evidenceVisible && !replay.active)
+      out.push({ region: { ...searchSpot.rect, region_id: 'search', kind: 'search', rank: searchSpot.rank, risk: null, disagreement: null, n_tiles: 1, peak_tile_id: null, source: null }, tone: 'search', label: `spot ${searchSpot.rank}` })
     if (ctxBoxes && evidenceVisible && !replay.active)
       ctxBoxes.rects.forEach((r, i) => out.push({ region: { ...r, region_id: `ctx${i}`, kind: 'context', rank: i, risk: null, disagreement: null, n_tiles: 1, peak_tile_id: null, source: null }, tone: 'context', label: i ? '' : ctxBoxes.label }))
     if (ev?.tile_rect && evidenceVisible && !replay.active)
       out.push({ region: { ...ev.tile_rect, region_id: 'tile', kind: 'tile', rank: 0, risk: null, disagreement: null, n_tiles: 1, peak_tile_id: null, source: null }, tone: 'selected', label: '' })
     return out
-  }, [evRegions, disputed, alerts, ev, evidenceVisible, layers, replay.active, allHidden, ctxBoxes])
+  }, [evRegions, disputed, alerts, ev, evidenceVisible, layers, replay.active, allHidden, ctxBoxes, searchSpot, searchQ])
 
   /** Highlighted regions to step through with J/K: unseen alerts first, then AI regions. */
   const targets = useMemo<Target[]>(() => {
@@ -592,6 +610,23 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
     return () => window.removeEventListener('keydown', onKey)
   }, [visible, detail, evidenceVisible, layers, toggleLayer, toggleAll, toggleNavigator, stepTarget, focusMode, onFocusMode, showHelp, openHelp])
 
+  const runSearch = useCallback((q: string) => {
+    const v = q.trim()
+    setSearchDraft(v); setSearchQ(v || null); setSearchSpot(null)
+    if (v) { setTab('search'); setSideOpen(true) }
+  }, [])
+  // Cmd/Ctrl+F focuses the search box (separate listener: the shortcut map above ignores modifier keys)
+  useEffect(() => {
+    if (!visible || !detail) return
+    const onFind = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'f' && searchBox.current && !searchBox.current.disabled) {
+        e.preventDefault(); searchBox.current.focus(); searchBox.current.select()
+      }
+    }
+    window.addEventListener('keydown', onFind)
+    return () => window.removeEventListener('keydown', onFind)
+  }, [visible, detail])
+
   // ---- side panel resize (pointer drag, or arrow keys on the handle) ----
   const dragging = useRef<{ x: number; w: number } | null>(null)
   const onResizeDown = (e: RPointerEvent<HTMLDivElement>) => { dragging.current = { x: e.clientX, w: effSideW }; e.currentTarget.setPointerCapture(e.pointerId) }
@@ -609,6 +644,7 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
 
   const tabs = [
     { id: 'evidence', label: 'Evidence', icon: evidenceVisible ? undefined : <Lock size={12} aria-label="locked" /> },
+    { id: 'search', label: 'Search', icon: evidenceVisible ? undefined : <Lock size={12} aria-label="locked" /> },
     { id: 'layout', label: 'Layout', icon: evidenceVisible ? undefined : <Lock size={12} aria-label="locked" /> },
     { id: 'unseen', label: 'Unseen', count: alertCheck ? unrevisited.length : undefined },
     { id: 'model', label: 'Models' },
@@ -662,6 +698,15 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
           opacity={opacity} onOpacity={(v) => { setOpacity(v); setInspectDim(false) }}
           zoomMag={zoomMag} minMag={minMag} onZoom={(f) => controls.current?.zoomBy(f)} onHome={() => { setInspectDim(false); controls.current?.home() }}
           navigator={navigatorOn} onNavigator={toggleNavigator} onShortcuts={openHelp}
+          search={
+            <form className="tb-search" role="search" onSubmit={(e) => { e.preventDefault(); runSearch(searchDraft) }}>
+              <input ref={searchBox} value={searchDraft} onChange={(e) => setSearchDraft(e.target.value)}
+                placeholder={evidenceVisible ? 'Search tissue…' : 'Search unlocks after your call'} disabled={!evidenceVisible || replay.active}
+                aria-label="Search this slide for tissue described in words (Cmd or Ctrl+F)" title="Search this slide in words (⌘F)" list="srch-terms" />
+              <datalist id="srch-terms">{searchTerms.map((t) => <option key={t} value={t} />)}</datalist>
+              <kbd className="tb-search-k">⌘F</kbd>
+            </form>
+          }
           prevCase={prevCase ? { href: href({ page: 'review', caseId: prevCase.case_id }), label: prevCase.slide_id } : null}
           nextCase={nextCase ? { href: href({ page: 'review', caseId: nextCase.case_id }), label: nextCase.slide_id } : null} />
 
@@ -745,7 +790,21 @@ export default function SlideReviewPage({ caseId, visible, cases, casesErr, blin
                   <EvidenceTab ev={ev} loading={evLoading} replaying={replay.active} evidenceRegions={evRegions} onJump={jump}
                     activeTarget={activeTarget} evalDocs={evalDocs}
                     reviews={read && read.source === 'live' && read.evidence_visible && !readOnly ? read.feature_reviews : null}
-                    reviewKey={read?.read_id ?? ''} onReview={reviewFeature} onOpenNotes={openNotes} />
+                    reviewKey={read?.read_id ?? ''} onReview={reviewFeature} onOpenNotes={openNotes}
+                    words={evidenceVisible && !replay.active ? (() => {
+                      const reg = evRegions.find((r) => r.region_id === activeTarget) ?? null
+                      return <ConceptWords caseId={detail.case_id} readId={read?.read_id} tileId={ev?.tile_id ?? null}
+                        regionId={reg?.region_id ?? null} regionLabel={reg ? `region #${reg.rank}` : null} onSearch={runSearch} />
+                    })() : null} />
+                )}
+                {tab === 'search' && (
+                  <SearchPanel caseId={detail.case_id} readId={read?.read_id} query={searchQ} hidden={!evidenceVisible || replay.active}
+                    onSearch={runSearch}
+                    onSpot={(s) => { setSearchSpot(s); if (s) setFocus({ rect: { x: s.rect.x - 4 * s.rect.w, y: s.rect.y - 4 * s.rect.h, w: 9 * s.rect.w, h: 9 * s.rect.h }, key: Date.now() }) }}
+                    onOpenCase={(c, r) => {
+                      pendingAt.current = { caseId: c, tile: '', rect: { x: r.x - 4 * r.w, y: r.y - 4 * r.h, w: 9 * r.w, h: 9 * r.h } }
+                      onSelectCase(c)
+                    }} />
                 )}
                 {tab === 'layout' && !evidenceVisible && (
                   <p className="small muted side-empty">The tissue layout is AI evidence: it unlocks once your blind call is recorded.</p>

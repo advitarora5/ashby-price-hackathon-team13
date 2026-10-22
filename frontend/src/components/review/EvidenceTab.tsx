@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight, Crosshair, Info, Lock, NotebookPen, TriangleAlert } from 'lucide-react'
 import type { EvalDoc, Evidence, FeatureBar, FeatureReview, Rect, Region, Verdict } from '../../types'
 import { pct, score } from '../../lib/format'
@@ -18,6 +18,8 @@ interface Props {
   /** null: this read cannot record verdicts (no live read, read-only, or AI still hidden) */
   reviews: FeatureReview[] | null
   reviewKey: string
+  /** optional slot under the tumour score (concept explanation in words) */
+  words?: ReactNode
   onReview: (feature: string, verdict: Verdict, note: string) => void
   onOpenNotes: () => void
 }
@@ -71,7 +73,7 @@ function Bar({ f, onJump, review }: { f: FeatureBar; onJump: Props['onJump']; re
  * What the AI flags and where. The tumour probe (the stronger ranker in evaluation) leads; the
  * calibrated text-prompt score is secondary and labelled as the weaker ranker. Numbers come from /api/eval.
  */
-export default function EvidenceTab({ ev, loading, replaying, evidenceRegions, onJump, activeTarget, evalDocs, reviews, reviewKey, onReview, onOpenNotes }: Props) {
+export default function EvidenceTab({ ev, loading, replaying, evidenceRegions, onJump, activeTarget, evalDocs, reviews, reviewKey, onReview, onOpenNotes, words }: Props) {
   const [showText, setShowText] = useState(false)
   if (replaying) return <p className="small muted">AI evidence is hidden while a recorded read is replayed.</p>
   if (loading && !ev) return <p className="small muted">Loading evidence…</p>
@@ -125,12 +127,13 @@ export default function EvidenceTab({ ev, loading, replaying, evidenceRegions, o
             Primary tumour signal: ranks tiles well{sig.probe ? <> (tile AUROC {sig.probe.auroc}{sig.probe.ci ? `, CI ${sig.probe.ci}` : ''}{sig.slides ? `, ${sig.slides} test slides` : ''})</> : null}.
             Uncalibrated: the value is a 0–1 score, not a probability.
             <InfoTip label="About the tumour probe score">
-              A linear probe on QuiltNet tile embeddings{ev.tumor_prob_source ? ` (${ev.tumor_prob_source})` : ''}, trained on 12 CAMELYON16
+              A linear probe on CONCH tile embeddings{ev.tumor_prob_source ? ` (${ev.tumor_prob_source})` : ''}, trained on 40 CAMELYON16
               slides and smoothed over neighbouring tiles. In evaluation it separated tumour from benign tiles better than the text-prompt score.
               AUROC (area under the ROC curve) = how well a score ranks positive tiles above negative ones; 0.5 is chance, 1.0 is perfect.
             </InfoTip>
           </div>
         </div>
+        {words}
 
         {meta && (
           <div className="signal">
