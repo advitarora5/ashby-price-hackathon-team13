@@ -61,3 +61,8 @@
 .srch-cases { margin-top: var(--sp-3); }
 .srch-cases ul { margin: 4px 0; padding-left: 16px; }
 .srch-method { margin-top: var(--sp-3); }
+/* Concept explanation ("In words") under the tumour score */
+.cw { margin-top: var(--sp-2); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--c-border); border-left: 3px solid var(--c-primary); border-radius: var(--r-md); background: var(--c-surface-2); }
+.cw-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.cw-line { margin: 4px 0; }
+.cw-foot { margin: 6px 0 0; }

@@ -1,0 +1,76 @@
+# Concept vocabulary for explaining the tumour score in words (secondlook/pipeline/concepts.py).
+# Each concept's direction in CONCH's space = text(template with phrase) - text(neutral), as in CoCoX
+# (Sadashivaiah et al., arXiv:2407.00557). Phrases describe what is visible, not a diagnosis:
+# concepts marked circular (naming the answer) are encoded but left out of the shown explanation.
+# Build the embeddings once with scripts/build_concept_vocab.py (needs the CONCH weights; no GPU).
+version: lymph_node_concepts_v1
+template: "an H&E image of a lymph node showing {}"
+neutral: "an H&E image of normal lymph node tissue"
+concepts:
+  # tumour cells: appearance
+  - {id: cohesive_clusters, label: cohesive clusters of large cells, group: tumour}
+  - {id: sheets_epithelial, label: sheets of epithelial cells, group: tumour}
+  - {id: pleomorphism, label: nuclear pleomorphism, group: tumour}
+  - {id: enlarged_nuclei, label: large vesicular nuclei, group: tumour}
+  - {id: prominent_nucleoli, label: prominent nucleoli, group: tumour}
+  - {id: high_nc_ratio, label: high nuclear to cytoplasmic ratio, group: tumour}
+  - {id: hyperchromasia, label: hyperchromatic nuclei, group: tumour}
+  - {id: mitotic_figures, label: mitotic figures, group: tumour}
+  - {id: atypical_mitoses, label: atypical mitoses, group: tumour}
+  - {id: gland_formation, label: gland formation, group: tumour}
+  - {id: tubules, label: tubule formation, group: tumour}
+  - {id: single_file, label: single file infiltrating cells, group: tumour}
+  - {id: signet_ring, label: signet ring cells, group: tumour}
+  - {id: abundant_cytoplasm, label: abundant eosinophilic cytoplasm, group: tumour}
+  - {id: clear_cytoplasm, label: clear cytoplasm, group: tumour}
+  - {id: comedo_necrosis, label: central comedo necrosis, group: tumour}
+  - {id: desmoplasia, label: desmoplastic stroma, group: tumour}
+  - {id: subcapsular_deposits, label: cells in the subcapsular sinus, group: tumour}
+  - {id: lymphovascular, label: tumour emboli in lymphatic vessels, group: tumour}
+  - {id: isolated_cells, label: isolated scattered large cells, group: tumour}
+  # normal lymph node structure
+  - {id: germinal_centre, label: germinal centres, group: normal}
+  - {id: primary_follicle, label: primary lymphoid follicles, group: normal}
+  - {id: mantle_zone, label: mantle zone of small lymphocytes, group: normal}
+  - {id: paracortex, label: paracortex, group: normal}
+  - {id: medullary_cords, label: medullary cords, group: normal}
+  - {id: sinus_histiocytes, label: sinus histiocytosis, group: normal}
+  - {id: open_sinuses, label: open lymphatic sinuses, group: normal}
+  - {id: capsule, label: fibrous capsule, group: normal}
+  - {id: hilum, label: hilum with vessels, group: normal}
+  - {id: high_endothelial, label: high endothelial venules, group: normal}
+  - {id: tingible_body, label: tingible body macrophages, group: normal}
+  # immune and inflammatory cells
+  - {id: small_lymphocytes, label: sheets of small round lymphocytes, group: immune}
+  - {id: plasma_cells, label: plasma cells, group: immune}
+  - {id: histiocytes, label: foamy histiocytes, group: immune}
+  - {id: granuloma, label: granulomas, group: immune}
+  - {id: neutrophils, label: neutrophils, group: immune}
+  - {id: eosinophils, label: eosinophils, group: immune}
+  - {id: immunoblasts, label: large immunoblasts, group: immune}
+  # stroma, fat, vessels, other tissue
+  - {id: adipose, label: mature adipose tissue, group: other}
+  - {id: perinodal_fat, label: perinodal fat, group: other}
+  - {id: collagen, label: dense collagen, group: other}
+  - {id: fibrosis, label: fibrosis, group: other}
+  - {id: blood_vessels, label: blood vessels, group: other}
+  - {id: haemorrhage, label: haemorrhage with red blood cells, group: other}
+  - {id: smooth_muscle, label: smooth muscle, group: other}
+  - {id: necrosis, label: necrosis with nuclear debris, group: other}
+  - {id: calcification, label: calcification, group: other}
+  - {id: anthracosis, label: anthracotic pigment, group: other}
+  - {id: hemosiderin, label: hemosiderin laden macrophages, group: other}
+  - {id: proteinaceous, label: pink proteinaceous fluid, group: other}
+  - {id: nerve, label: nerve bundles, group: other}
+  # slide preparation and artifacts
+  - {id: crush, label: crush artifact, group: artifact}
+  - {id: tissue_fold, label: tissue fold, group: artifact}
+  - {id: blur, label: blurry out of focus area, group: artifact}
+  - {id: pale_staining, label: pale faded staining, group: artifact}
+  - {id: dark_staining, label: dark overstained area, group: artifact}
+  - {id: ink, label: marking ink, group: artifact}
+  - {id: torn_tissue, label: torn tissue edges, group: artifact}
+  # naming the answer: encoded for the sanity check, left out of the shown explanation
+  - {id: metastatic_carcinoma, label: metastatic carcinoma, group: circular}
+  - {id: breast_cancer, label: metastatic breast cancer, group: circular}
+  - {id: benign_node, label: a benign reactive lymph node, group: circular}
